@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="STARK Tower: browser-based educational zk-STARK demo with AIR, FRI, and end-to-end toy proving." />
+  <title>STARK Tower</title>
+  <script>
+    (function () {
+      const saved = localStorage.getItem('theme');
+      document.documentElement.setAttribute('data-theme', saved ?? 'dark');
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <div class="site-shell">
+    <header class="site-header" role="banner">
+      <div>
+        <div class="brand-kicker">Crypto-Lab System Gallery</div>
+        <h1 class="brand-title">STARK Tower</h1>
+        <p class="brand-sub">The definitive educational walkthrough of transparent, post-quantum zk-STARK architecture.</p>
+      </div>
+    </header>
+
+    <main class="wrap" id="main-content">
+      <section class="hero-panel">
+        <p class="hero-lead">Groth16 and PLONK dominate SNARK deployments. STARKs replace trusted setup with transparency and replace pairing assumptions with hash-based security.</p>
+        <p class="hero-note">This demo walks from AIR traces to FRI folding, then runs a complete educational STARK protocol in the browser over a small field. Toy parameters are clearly labeled and not production secure.</p>
+        <div class="hero-actions">
+          <a class="resource-link" href="https://eprint.iacr.org/2018/046" target="_blank" rel="noopener noreferrer">STARK Paper (2018/046)</a>
+          <a class="resource-link" href="https://doi.org/10.4230/LIPIcs.ICALP.2018.14" target="_blank" rel="noopener noreferrer">FRI Paper (ICALP 2018)</a>
+          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena</a>
+        </div>
+      </section>
+
+      <section class="exhibit" id="exhibit-1" aria-labelledby="ex1-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 01</span><span class="badge badge-real">Orientation</span></div>
+        <h2 class="ex-title" id="ex1-title">STARKs vs SNARKs: Key Differences</h2>
+        <div class="prose">
+          <p><strong>Transparent setup:</strong> Groth16 and PLONK rely on trusted setup artifacts. STARKs replace that with public randomness derived from transcript hashing, with no toxic waste ceremony.</p>
+          <p><strong>Post-quantum conjectured security:</strong> pairing-based SNARK assumptions are vulnerable to Shor-style quantum attacks, while STARK security reduces to collision resistance of hash functions plus FRI soundness assumptions.</p>
+          <p><strong>Scalability profile:</strong> STARK provers target quasi-linear behavior in computation size and polylogarithmic verification.</p>
+          <p><strong>Cost:</strong> proof size is much larger. Typical STARK proofs are roughly 45-200KB, while Groth16 can be 128 bytes.</p>
+          <p><strong>Stack:</strong> AIR constraints + FRI low-degree testing + transcript hash commitments.</p>
+        </div>
+        <div class="vl">
+          <strong>Why this matters:</strong> StarkNet, StarkEx, Polygon Miden, and Risc Zero all rely on STARK architecture because transparency and post-quantum posture outweigh proof size for their use cases.
+        </div>
+        <div class="hero-actions">
+          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena (Groth16 / PLONK)</a>
+        </div>
+      </section>
+
+      <section class="exhibit" id="exhibit-2" aria-labelledby="ex2-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 02</span><span class="badge badge-real">AIR + Fibonacci</span></div>
+        <h2 class="ex-title" id="ex2-title">Arithmetic Intermediate Representation (AIR)</h2>
+        <div class="trust-banner trust-conceptual"><strong>Educational STARK over small field:</strong> p = 2^31 - 1, short traces, toy security only.</div>
+        <div class="prose">
+          <p>AIR models computation as a trace of field elements and transition constraints between adjacent rows.</p>
+          <p>For Fibonacci, row i is (a, b). Constraints: next_a = b and next_b = a + b mod p, with boundary row(0) = (1, 1).</p>
+        </div>
+        <div class="demo-grid">
+          <div class="panel">
+            <div class="ph">Interactive Fibonacci AIR</div>
+            <div class="pb">
+              <label for="air-n">Prove Fibonacci index n (8-16)</label>
+              <input id="air-n" type="number" min="8" max="16" value="16" class="num-input" />
+              <div class="controls">
+                <button class="bp" id="air-generate-trace">Generate trace</button>
+                <button class="bs" id="air-generate-constraints">Generate AIR constraints</button>
+                <button class="bp" id="air-prove">Prove</button>
+                <button class="bs" id="air-verify">Verify</button>
+              </div>
+              <div id="air-status" class="hash-label" role="status" aria-live="polite">Ready.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph">What verifier does not see</div>
+            <div class="pb">
+              <ul class="facts">
+                <li>Full execution trace</li>
+                <li>Most intermediate Fibonacci values</li>
+                <li>Prover internal randomness</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">Trace table</div>
+          <div class="pb table-wrap"><table id="air-trace-table" class="commit-table"></table></div>
+        </div>
+        <div class="panel">
+          <div class="ph">Constraints and proof transcript</div>
+          <div class="pb">
+            <pre id="air-constraints" class="log"></pre>
+            <pre id="air-proof" class="log"></pre>
+          </div>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> AIR is the compilation target for StarkNet Cairo, Miden VM, and Risc Zero zkVM-style execution traces.</div>
+      </section>
+
+      <section class="exhibit" id="exhibit-3" aria-labelledby="ex3-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 03</span><span class="badge badge-real">FRI Visualizer</span></div>
+        <h2 class="ex-title" id="ex3-title">FRI: The Heart of STARKs</h2>
+        <div class="trust-banner trust-conceptual"><strong>Educational FRI rounds:</strong> real SHA-256 Merkle commitments over toy domains.</div>
+        <div class="demo-grid">
+          <div class="panel">
+            <div class="ph">FRI Controls</div>
+            <div class="pb">
+              <label for="fri-degree">Initial degree</label>
+              <select id="fri-degree" class="num-input">
+                <option value="4">4</option>
+                <option value="8" selected>8</option>
+                <option value="16">16</option>
+              </select>
+              <div class="controls">
+                <button class="bp" id="fri-commit">Commit</button>
+                <button class="bs" id="fri-fold">Fold next round</button>
+                <button class="bp" id="fri-query">Query phase</button>
+              </div>
+              <div id="fri-status" class="hash-label" role="status" aria-live="polite">Awaiting commit.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph">Proof size estimate</div>
+            <div class="pb">
+              <p id="fri-size"></p>
+              <p class="hint">Approximate formula: queries x path length x 32-byte hashes per round.</p>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">FRI transcript</div>
+          <div class="pb"><pre id="fri-log" class="log"></pre></div>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> FRI gives transparent low-degree testing using only hash commitments and verifier challenges, removing trusted setup ceremonies.</div>
+      </section>
+
+      <section class="exhibit" id="exhibit-4" aria-labelledby="ex4-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 04</span><span class="badge badge-real">Proof Size Tradeoff</span></div>
+        <h2 class="ex-title" id="ex4-title">Proof Size: The STARK Tradeoff</h2>
+        <div class="table-wrap panel">
+          <div class="ph">Real-world benchmark style comparison</div>
+          <div class="pb">
+            <table class="commit-table" id="size-table"></table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">Log-scale proof size chart (bytes)</div>
+          <div class="pb" id="size-chart"></div>
+        </div>
+        <div class="prose">
+          <p>Recursive STARK aggregation compresses many proofs into one L1-submitted proof. This is central to StarkNet and other rollup stacks.</p>
+          <p>Fiat-Shamir converts verifier randomness into transcript-derived hash challenges, making the protocol non-interactive in the random oracle model.</p>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> 100KB is expensive on-chain but trivial off-chain. The practical question is whether trust minimization and post-quantum posture justify the byte overhead.</div>
+      </section>
+
+      <section class="exhibit" id="exhibit-5" aria-labelledby="ex5-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 05</span><span class="badge badge-real">End-to-End Toy STARK</span></div>
+        <h2 class="ex-title" id="ex5-title">Prove and Verify in Browser</h2>
+        <div class="trust-banner trust-conceptual"><strong>Toy STARK for education:</strong> p = 2^31 - 1, trace length 16, 3 folds, 4 queries/round, roughly 16-bit toy security.</div>
+        <div class="demo-grid">
+          <div class="panel">
+            <div class="ph">Protocol run</div>
+            <div class="pb">
+              <label for="e2e-n">Fibonacci index n (8-16)</label>
+              <input id="e2e-n" type="number" min="8" max="16" value="16" class="num-input" />
+              <div class="controls">
+                <button class="bp" id="e2e-prove">Generate proof</button>
+                <button class="bs" id="e2e-verify">Verify proof</button>
+                <button class="bd" id="e2e-corrupt">Corrupt trace</button>
+              </div>
+              <div id="e2e-status" class="hash-label" role="status" aria-live="polite">No proof generated yet.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph">Protocol phases</div>
+            <div class="pb">
+              <ol class="facts">
+                <li>Witness/trace generation</li>
+                <li>LDE + Merkle commitment</li>
+                <li>Constraint polynomial evaluation</li>
+                <li>FRI rounds and queries</li>
+                <li>Proof assembly</li>
+                <li>Verifier checks</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">Proof object and verification log</div>
+          <div class="pb"><pre id="e2e-log" class="log"></pre></div>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> even toy runs show how only a few queried positions can catch inconsistent traces with high probability.</div>
+      </section>
+
+      <section class="exhibit" id="exhibit-6" aria-labelledby="ex6-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 06</span><span class="badge badge-real">Production Deployments</span></div>
+        <h2 class="ex-title" id="ex6-title">STARKs in Production</h2>
+        <div class="cards-4">
+          <article class="card">
+            <h3 class="card-title">A. StarkNet</h3>
+            <p class="card-desc">Cairo VM execution is compiled to AIR, proven with STARKs, recursively aggregated, and settled on Ethereum.</p>
+          </article>
+          <article class="card">
+            <h3 class="card-title">B. StarkEx</h3>
+            <p class="card-desc">Application-specific scaling for exchanges and games, including dYdX v3, ImmutableX, and Sorare deployments.</p>
+          </article>
+          <article class="card">
+            <h3 class="card-title">C. Risc Zero</h3>
+            <p class="card-desc">RISC-V zkVM proving general computation with STARK internals, commonly paired with SNARK wrapping for compact on-chain verification.</p>
+          </article>
+          <article class="card">
+            <h3 class="card-title">D. Polygon Miden</h3>
+            <p class="card-desc">STARK-based VM with AIR constraints and recursion pipeline for compressed proofs.</p>
+          </article>
+        </div>
+        <div class="panel" style="margin-top: 14px;">
+          <div class="ph">Cross-demo links</div>
+          <div class="pb hero-actions">
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena</a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/" target="_blank" rel="noopener noreferrer">ZK Proof Lab</a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-pairing-gate/" target="_blank" rel="noopener noreferrer">Pairing Gate</a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-compare/" target="_blank" rel="noopener noreferrer">Crypto Compare</a>
+          </div>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> STARKs are deployed infrastructure for scalability and integrity proofs, not just research prototypes.</div>
+      </section>
+    </main>
+  </div>
+
+  <footer style="text-align:center; padding: 1.5rem; font-size: 0.85rem; opacity: 0.7; margin-top: 2rem;">
+    Whether you eat or drink or whatever you do, do it all for the glory of God. — 1 Corinthians 10:31
+  </footer>
+
+  <script type="module" src="src/main.ts"></script>
+</body>
+</html>
