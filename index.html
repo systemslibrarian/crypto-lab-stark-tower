@@ -29,9 +29,9 @@
         <p class="hero-lead">Groth16 and PLONK dominate SNARK deployments. STARKs replace trusted setup with transparency and replace pairing assumptions with hash-based security.</p>
         <p class="hero-note">This demo walks from AIR traces to FRI folding, then runs a complete educational STARK protocol in the browser over a small field. Toy parameters are clearly labeled and not production secure.</p>
         <div class="hero-actions">
-          <a class="resource-link" href="https://eprint.iacr.org/2018/046" target="_blank" rel="noopener noreferrer">STARK Paper (2018/046)</a>
-          <a class="resource-link" href="https://doi.org/10.4230/LIPIcs.ICALP.2018.14" target="_blank" rel="noopener noreferrer">FRI Paper (ICALP 2018)</a>
-          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena</a>
+          <a class="resource-link" href="https://eprint.iacr.org/2018/046" target="_blank" rel="noopener noreferrer">STARK Paper (2018/046)<span class="sr-only"> (opens in new tab)</span></a>
+          <a class="resource-link" href="https://doi.org/10.4230/LIPIcs.ICALP.2018.14" target="_blank" rel="noopener noreferrer">FRI Paper (ICALP 2018)<span class="sr-only"> (opens in new tab)</span></a>
+          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena<span class="sr-only"> (opens in new tab)</span></a>
         </div>
       </section>
 
@@ -49,7 +49,7 @@
           <strong>Why this matters:</strong> StarkNet, StarkEx, Polygon Miden, and Risc Zero all rely on STARK architecture because transparency and post-quantum posture outweigh proof size for their use cases.
         </div>
         <div class="hero-actions">
-          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena (Groth16 / PLONK)</a>
+          <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena (Groth16 / PLONK)<span class="sr-only"> (opens in new tab)</span></a>
         </div>
       </section>
 
@@ -89,13 +89,13 @@
         </div>
         <div class="panel">
           <div class="ph">Trace table</div>
-          <div class="pb table-wrap"><table id="air-trace-table" class="commit-table"></table></div>
+          <div class="pb table-wrap"><table id="air-trace-table" class="commit-table" aria-label="Fibonacci execution trace"></table></div>
         </div>
         <div class="panel">
           <div class="ph">Constraints and proof transcript</div>
           <div class="pb">
-            <pre id="air-constraints" class="log"></pre>
-            <pre id="air-proof" class="log"></pre>
+            <pre id="air-constraints" class="log" role="log" aria-label="AIR constraint output"></pre>
+            <pre id="air-proof" class="log" role="log" aria-label="Proof transcript"></pre>
           </div>
         </div>
         <div class="vl"><strong>Why this matters:</strong> AIR is the compilation target for StarkNet Cairo, Miden VM, and Risc Zero zkVM-style execution traces.</div>
@@ -133,7 +133,7 @@
         </div>
         <div class="panel">
           <div class="ph">FRI transcript</div>
-          <div class="pb"><pre id="fri-log" class="log"></pre></div>
+          <div class="pb"><pre id="fri-log" class="log" role="log" aria-label="FRI transcript"></pre></div>
         </div>
         <div class="vl"><strong>Why this matters:</strong> FRI gives transparent low-degree testing using only hash commitments and verifier challenges, removing trusted setup ceremonies.</div>
       </section>
@@ -144,7 +144,7 @@
         <div class="table-wrap panel">
           <div class="ph">Real-world benchmark style comparison</div>
           <div class="pb">
-            <table class="commit-table" id="size-table"></table>
+            <table class="commit-table" id="size-table" aria-label="Proof size benchmarks across ZK systems"></table>
           </div>
         </div>
         <div class="panel">
@@ -192,7 +192,7 @@
         </div>
         <div class="panel">
           <div class="ph">Proof object and verification log</div>
-          <div class="pb"><pre id="e2e-log" class="log"></pre></div>
+          <div class="pb"><pre id="e2e-log" class="log" role="log" aria-label="End-to-end proof and verification log"></pre></div>
         </div>
         <div class="vl"><strong>Why this matters:</strong> even toy runs show how only a few queried positions can catch inconsistent traces with high probability.</div>
       </section>
@@ -221,10 +221,10 @@
         <div class="panel" style="margin-top: 14px;">
           <div class="ph">Cross-demo links</div>
           <div class="pb hero-actions">
-            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena</a>
-            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/" target="_blank" rel="noopener noreferrer">ZK Proof Lab</a>
-            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-pairing-gate/" target="_blank" rel="noopener noreferrer">Pairing Gate</a>
-            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-compare/" target="_blank" rel="noopener noreferrer">Crypto Compare</a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noopener noreferrer">SNARK Arena<span class="sr-only"> (opens in new tab)</span></a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/" target="_blank" rel="noopener noreferrer">ZK Proof Lab<span class="sr-only"> (opens in new tab)</span></a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-lab-pairing-gate/" target="_blank" rel="noopener noreferrer">Pairing Gate<span class="sr-only"> (opens in new tab)</span></a>
+            <a class="resource-link" href="https://systemslibrarian.github.io/crypto-compare/" target="_blank" rel="noopener noreferrer">Crypto Compare<span class="sr-only"> (opens in new tab)</span></a>
           </div>
         </div>
         <div class="vl"><strong>Why this matters:</strong> STARKs are deployed infrastructure for scalability and integrity proofs, not just research prototypes.</div>
@@ -232,7 +232,7 @@
     </main>
   </div>
 
-  <footer style="text-align:center; padding: 1.5rem; font-size: 0.85rem; opacity: 0.7; margin-top: 2rem;">
+  <footer class="site-footer">
     Whether you eat or drink or whatever you do, do it all for the glory of God. — 1 Corinthians 10:31
   </footer>
 
