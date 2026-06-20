@@ -8,11 +8,17 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "devDependencies": {
+    "esbuild": "^0.27.7",
     "gh-pages": "^6.3.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.7"
+  },
+  "allowScripts": {
+    "esbuild@0.27.7": true
   }
 }

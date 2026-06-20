@@ -1,784 +1,466 @@
-type TraceRow = { a: bigint; b: bigint };
+// DOM wiring for STARK Tower. All cryptography lives in ./stark, ./field and
+// ./merkle — this file only drives the exhibits and renders results.
+import {
+  prove,
+  verify,
+  airAnalysis,
+  friDemo,
+  proofStats,
+  securityBits,
+  zkOpeningExperiment,
+  type StarkProof,
+  type VerifyResult,
+  type FriLayerInfo,
+  type ZkExperiment,
+} from './stark';
 
-type MerkleTree = {
-  leaves: Uint8Array[];
-  levels: Uint8Array[][];
-  root: Uint8Array;
-  rootHex: string;
-};
-
-type MerkleOpening = {
-  index: number;
-  value: bigint;
-  leafHashHex: string;
-  path: string[];
-};
-
-type FriQueryRound = {
-  round: number;
-  leftIndex: number;
-  rightIndex: number;
-  leftValue: string;
-  rightValue: string;
-  leftPath: string[];
-  rightPath: string[];
-  nextValue?: string;
-  nextPath?: string[];
-};
-
-type FriQuery = {
-  basePairIndex: number;
-  rounds: FriQueryRound[];
-};
-
-type ToyProof = {
-  label: string;
-  fieldPrime: string;
-  traceLength: number;
-  traceRoot: string;
-  compositionRoots: string[];
-  friChallenges: string[];
-  finalConstant: string;
-  queries: FriQuery[];
-  packedTrace: string[];
-  ldeLength: number;
-  queryCount: number;
-};
-
-const P = 2147483647n;
-const TOY_LABEL = 'Educational STARK over small field - not production parameters.';
-
-function mod(n: bigint): bigint {
-  const v = n % P;
-  return v >= 0n ? v : v + P;
+function $(id: string): HTMLElement | null {
+  return document.getElementById(id);
 }
 
-function add(a: bigint, b: bigint): bigint {
-  return mod(a + b);
+function setText(id: string, text: string): void {
+  const el = $(id);
+  if (el) el.textContent = text;
 }
 
-function sub(a: bigint, b: bigint): bigint {
-  return mod(a - b);
-}
-
-function mul(a: bigint, b: bigint): bigint {
-  return mod(a * b);
-}
-
-function powMod(base: bigint, exp: bigint): bigint {
-  let result = 1n;
-  let b = mod(base);
-  let e = exp;
-  while (e > 0n) {
-    if (e & 1n) {
-      result = mul(result, b);
-    }
-    b = mul(b, b);
-    e >>= 1n;
-  }
-  return result;
-}
-
-function inv(a: bigint): bigint {
-  if (a === 0n) {
-    throw new Error('Division by zero in field');
-  }
-  return powMod(a, P - 2n);
-}
-
-function div(a: bigint, b: bigint): bigint {
-  return mul(a, inv(b));
-}
-
-function bigintToBytes32(v: bigint): Uint8Array {
-  const out = new Uint8Array(32);
-  let x = mod(v);
-  for (let i = 31; i >= 0; i -= 1) {
-    out[i] = Number(x & 0xffn);
-    x >>= 8n;
-  }
-  return out;
-}
-
-function hex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function fromHex(hexString: string): Uint8Array {
-  const clean = hexString.trim();
-  const out = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < out.length; i += 1) {
-    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
-async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  const copy = new Uint8Array(data.byteLength);
-  copy.set(data);
-  const digest = await crypto.subtle.digest('SHA-256', copy);
-  return new Uint8Array(digest);
-}
-
-function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
-}
-
-async function hashLeaf(value: bigint): Promise<Uint8Array> {
-  const preimage = concatBytes(new TextEncoder().encode('leaf:'), bigintToBytes32(value));
-  return sha256(preimage);
-}
-
-async function buildMerkle(values: bigint[]): Promise<MerkleTree> {
-  if (values.length === 0 || (values.length & (values.length - 1)) !== 0) {
-    throw new Error('Merkle inputs must be non-empty and power-of-two length');
-  }
-
-  const leaves = await Promise.all(values.map((v) => hashLeaf(v)));
-  const levels: Uint8Array[][] = [leaves];
-  let current = leaves;
-
-  while (current.length > 1) {
-    const next: Uint8Array[] = [];
-    for (let i = 0; i < current.length; i += 2) {
-      next.push(await sha256(concatBytes(current[i], current[i + 1])));
-    }
-    levels.push(next);
-    current = next;
-  }
-
-  return {
-    leaves,
-    levels,
-    root: levels[levels.length - 1][0],
-    rootHex: hex(levels[levels.length - 1][0]),
-  };
-}
-
-function openMerkle(tree: MerkleTree, values: bigint[], index: number): MerkleOpening {
-  const path: string[] = [];
-  let idx = index;
-  for (let level = 0; level < tree.levels.length - 1; level += 1) {
-    const sibling = idx ^ 1;
-    path.push(hex(tree.levels[level][sibling]));
-    idx = Math.floor(idx / 2);
-  }
-  return {
-    index,
-    value: values[index],
-    leafHashHex: hex(tree.leaves[index]),
-    path,
-  };
-}
-
-async function verifyMerkleOpening(opening: MerkleOpening, expectedRootHex: string): Promise<boolean> {
-  let h = await hashLeaf(opening.value);
-  let idx = opening.index;
-  for (const siblingHex of opening.path) {
-    const sibling = fromHex(siblingHex);
-    if (idx % 2 === 0) {
-      h = await sha256(concatBytes(h, sibling));
-    } else {
-      h = await sha256(concatBytes(sibling, h));
-    }
-    idx = Math.floor(idx / 2);
-  }
-  return hex(h) === expectedRootHex;
-}
-
-function packRow(row: TraceRow): bigint {
-  return add(row.a, mul(row.b, 65537n));
-}
-
-function buildFibonacciTrace(n: number): TraceRow[] {
-  const rows: TraceRow[] = [];
-  let a = 1n;
-  let b = 1n;
-  rows.push({ a, b });
-  for (let i = 1; i < n; i += 1) {
-    const nextA = b;
-    const nextB = add(a, b);
-    rows.push({ a: nextA, b: nextB });
-    a = nextA;
-    b = nextB;
-  }
-  return rows;
-}
-
-function evaluateConstraints(trace: TraceRow[]): bigint[] {
-  const out: bigint[] = [];
-  for (let i = 0; i < trace.length - 1; i += 1) {
-    const row = trace[i];
-    const next = trace[i + 1];
-    const c1 = sub(next.a, row.b);
-    const c2 = sub(next.b, add(row.a, row.b));
-    out.push(add(c1, c2));
-  }
-  return out;
-}
-
-function nextPow2(n: number): number {
-  let p = 1;
-  while (p < n) p <<= 1;
-  return p;
-}
-
-function padToPow2(values: bigint[]): bigint[] {
-  const size = nextPow2(values.length);
-  const out = [...values];
-  while (out.length < size) {
-    out.push(0n);
-  }
-  return out;
-}
-
-function interpolate(xs: bigint[], ys: bigint[]): bigint[] {
-  const n = xs.length;
-  let poly: bigint[] = [0n];
-
-  for (let i = 0; i < n; i += 1) {
-    let basis: bigint[] = [1n];
-    let denom = 1n;
-
-    for (let j = 0; j < n; j += 1) {
-      if (i === j) continue;
-      basis = polyMul(basis, [sub(0n, xs[j]), 1n]);
-      denom = mul(denom, sub(xs[i], xs[j]));
-    }
-
-    const scale = div(ys[i], denom);
-    basis = basis.map((c) => mul(c, scale));
-    poly = polyAdd(poly, basis);
-  }
-
-  return poly.map(mod);
-}
-
-function polyAdd(a: bigint[], b: bigint[]): bigint[] {
-  const len = Math.max(a.length, b.length);
-  const out = new Array<bigint>(len).fill(0n);
-  for (let i = 0; i < len; i += 1) {
-    out[i] = add(a[i] ?? 0n, b[i] ?? 0n);
-  }
-  return out;
-}
-
-function polyMul(a: bigint[], b: bigint[]): bigint[] {
-  const out = new Array<bigint>(a.length + b.length - 1).fill(0n);
-  for (let i = 0; i < a.length; i += 1) {
-    for (let j = 0; j < b.length; j += 1) {
-      out[i + j] = add(out[i + j], mul(a[i], b[j]));
-    }
-  }
-  return out;
-}
-
-function polyEval(coeffs: bigint[], x: bigint): bigint {
-  let acc = 0n;
-  for (let i = coeffs.length - 1; i >= 0; i -= 1) {
-    acc = add(mul(acc, x), coeffs[i]);
-  }
-  return acc;
-}
-
-async function challengeFromTranscript(transcript: string): Promise<bigint> {
-  const h = await sha256(new TextEncoder().encode(transcript));
-  let v = 0n;
-  for (let i = 0; i < 8; i += 1) {
-    v = (v << 8n) + BigInt(h[i]);
-  }
-  return mod(v || 1n);
-}
-
-async function buildToyProof(n: number, tamper = false): Promise<{ proof: ToyProof; trace: TraceRow[]; queryRows: number[] }> {
-  const trace = buildFibonacciTrace(n);
-  if (tamper && trace.length > 4) {
-    trace[4] = { a: add(trace[4].a, 3n), b: trace[4].b };
-  }
-
-  const packedTrace = padToPow2(trace.map(packRow));
-  const traceTree = await buildMerkle(packedTrace);
-
-  const constraints = evaluateConstraints(trace);
-  const constraintPoints = constraints.map((_, i) => BigInt(i + 1));
-  const coeffs = interpolate(constraintPoints, constraints);
-  const ldeLength = 16;
-  const compositionValues = new Array<bigint>(ldeLength)
-    .fill(0n)
-    .map((_, i) => polyEval(coeffs, BigInt(i + 1)));
-
-  const roundsValues: bigint[][] = [compositionValues];
-  const roundTrees: MerkleTree[] = [await buildMerkle(compositionValues)];
-  const challenges: bigint[] = [];
-
-  const maxRounds = 3;
-  for (let r = 0; r < maxRounds; r += 1) {
-    const current = roundsValues[r];
-    const challenge = await challengeFromTranscript(`${roundTrees.map((t) => t.rootHex).join('|')}|r${r}`);
-    challenges.push(challenge);
-
-    const next: bigint[] = [];
-    for (let i = 0; i < current.length; i += 2) {
-      next.push(add(current[i], mul(challenge, current[i + 1])));
-    }
-
-    roundsValues.push(next);
-    roundTrees.push(await buildMerkle(next));
-    if (next.length <= 2) {
-      break;
-    }
-  }
-
-  const finalConstant = roundsValues[roundsValues.length - 1][0];
-  const queryCount = 4;
-  const queries: FriQuery[] = [];
-
-  const baseLen = roundsValues[0].length / 2;
-  for (let q = 0; q < queryCount; q += 1) {
-    const seed = await challengeFromTranscript(`${roundTrees[0].rootHex}|q${q}|${n}`);
-    const basePairIndex = Number(seed % BigInt(baseLen));
-    const rounds: FriQueryRound[] = [];
-    let pairIndex = basePairIndex;
-
-    for (let r = 0; r < roundsValues.length - 1; r += 1) {
-      const currentVals = roundsValues[r];
-      const nextVals = roundsValues[r + 1];
-      const leftIndex = pairIndex * 2;
-      const rightIndex = leftIndex + 1;
-
-      const leftOpen = openMerkle(roundTrees[r], currentVals, leftIndex);
-      const rightOpen = openMerkle(roundTrees[r], currentVals, rightIndex);
-      const nextOpen = openMerkle(roundTrees[r + 1], nextVals, pairIndex);
-
-      rounds.push({
-        round: r,
-        leftIndex,
-        rightIndex,
-        leftValue: leftOpen.value.toString(),
-        rightValue: rightOpen.value.toString(),
-        leftPath: leftOpen.path,
-        rightPath: rightOpen.path,
-        nextValue: nextOpen.value.toString(),
-        nextPath: nextOpen.path,
-      });
-
-      pairIndex = Math.floor(pairIndex / 2);
-    }
-
-    queries.push({ basePairIndex, rounds });
-  }
-
-  const queryRows = [...new Set(queries.map((q) => q.basePairIndex % Math.max(1, trace.length - 1)))];
-
-  return {
-    proof: {
-      label: TOY_LABEL,
-      fieldPrime: P.toString(),
-      traceLength: trace.length,
-      traceRoot: traceTree.rootHex,
-      compositionRoots: roundTrees.map((t) => t.rootHex),
-      friChallenges: challenges.map((c) => c.toString()),
-      finalConstant: finalConstant.toString(),
-      queries,
-      packedTrace: packedTrace.map((v) => v.toString()),
-      ldeLength,
-      queryCount,
-    },
-    trace,
-    queryRows,
-  };
-}
-
-async function verifyToyProof(proof: ToyProof): Promise<{ ok: boolean; details: string[] }> {
-  const details: string[] = [];
-  const challenges = proof.friChallenges.map((c) => BigInt(c));
-
-  for (const q of proof.queries) {
-    for (let r = 0; r < q.rounds.length; r += 1) {
-      const round = q.rounds[r];
-      const leftOpen: MerkleOpening = {
-        index: round.leftIndex,
-        value: BigInt(round.leftValue),
-        leafHashHex: '',
-        path: round.leftPath,
-      };
-      const rightOpen: MerkleOpening = {
-        index: round.rightIndex,
-        value: BigInt(round.rightValue),
-        leafHashHex: '',
-        path: round.rightPath,
-      };
-      const leftOk = await verifyMerkleOpening(leftOpen, proof.compositionRoots[r]);
-      const rightOk = await verifyMerkleOpening(rightOpen, proof.compositionRoots[r]);
-      if (!leftOk || !rightOk) {
-        return { ok: false, details: [...details, `Merkle opening failed at round ${r}`] };
-      }
-
-      const expectedNext = add(BigInt(round.leftValue), mul(challenges[r], BigInt(round.rightValue)));
-      if (round.nextValue === undefined || round.nextPath === undefined) {
-        return { ok: false, details: [...details, `Missing next-round opening at round ${r}`] };
-      }
-
-      const nextOpen: MerkleOpening = {
-        index: Math.floor(round.leftIndex / 2),
-        value: BigInt(round.nextValue),
-        leafHashHex: '',
-        path: round.nextPath,
-      };
-      const nextOk = await verifyMerkleOpening(nextOpen, proof.compositionRoots[r + 1]);
-      if (!nextOk) {
-        return { ok: false, details: [...details, `Next-round Merkle opening failed at round ${r}`] };
-      }
-
-      if (expectedNext !== BigInt(round.nextValue)) {
-        return { ok: false, details: [...details, `FRI fold mismatch at round ${r}`] };
-      }
-    }
-  }
-
-  details.push('All Merkle openings and fold relations validated.');
-  return { ok: true, details };
-}
-
+// --------------------------------------------------------------------------
+// Theme toggle
+// --------------------------------------------------------------------------
 function initThemeToggle(): void {
   const root = document.documentElement;
   const header = document.querySelector('.site-header');
   if (!header) return;
-
   const button = document.createElement('button');
   button.className = 'theme-toggle';
   button.type = 'button';
-
-  function applyButtonState(): void {
-    const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const isDark = current === 'dark';
+  const apply = (): void => {
+    const isDark = root.getAttribute('data-theme') !== 'light';
     button.textContent = isDark ? '🌙' : '☀️';
     button.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-  }
-
+  };
   button.addEventListener('click', () => {
-    const current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     root.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
-    applyButtonState();
+    apply();
   });
-
   header.appendChild(button);
-  applyButtonState();
+  apply();
 }
 
-function renderTraceTable(trace: TraceRow[], queriedRows: number[] = []): void {
-  const table = document.getElementById('air-trace-table');
-  if (!table) return;
-  table.innerHTML = '';
+// --------------------------------------------------------------------------
+// Shared renderers
+// --------------------------------------------------------------------------
+function renderCheckList(target: HTMLElement, result: VerifyResult): void {
+  target.innerHTML = '';
+  for (const c of result.checks) {
+    const row = document.createElement('div');
+    row.className = `check-row ${c.ok ? 'check-pass' : 'check-fail'}`;
+    row.innerHTML =
+      `<span class="check-mark" aria-hidden="true">${c.ok ? '✓' : '✗'}</span>` +
+      `<span class="check-body"><span class="check-name">${c.name}</span>` +
+      `<span class="check-detail">${c.detail}</span></span>`;
+    target.appendChild(row);
+  }
+  const verdict = document.createElement('div');
+  verdict.className = `verdict ${result.accepted ? 'verdict-ok' : 'verdict-bad'}`;
+  verdict.setAttribute('role', 'status');
+  verdict.textContent = result.accepted
+    ? '✓ ACCEPTED — the verifier is convinced, having only checked hashes and a low-degree test.'
+    : '✗ REJECTED — the verifier caught the cheat without ever recomputing the trace.';
+  target.appendChild(verdict);
+}
 
-  const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>step</th><th>a</th><th>b</th><th>queried</th></tr>';
-  const tbody = document.createElement('tbody');
+// --------------------------------------------------------------------------
+// Exhibit 2 — AIR
+// --------------------------------------------------------------------------
+function bindExhibit2(): void {
+  const nSel = $('air-n') as HTMLSelectElement | null;
+  let tampered = false;
 
-  trace.forEach((row, i) => {
-    const tr = document.createElement('tr');
-    if (queriedRows.includes(i)) {
-      tr.className = 'trace-queried';
+  function render(): void {
+    const n = Number(nSel?.value ?? 16);
+    const tamperRow = tampered ? Math.floor(n / 2) : -1;
+    const a = airAnalysis(n, tamperRow);
+
+    // Trace table
+    const table = $('air-trace-table');
+    if (table) {
+      const head = '<thead><tr><th>step i</th><th>t[i]</th><th>status</th></tr></thead>';
+      const body = a.trace
+        .map((val, i) => {
+          const isTamper = i === tamperRow;
+          return `<tr class="${isTamper ? 'trace-bad' : ''}"><td>${i}</td><td>${val}</td><td>${
+            isTamper ? 'tampered' : i < 2 ? 'boundary' : 'derived'
+          }</td></tr>`;
+        })
+        .join('');
+      table.innerHTML = head + `<tbody>${body}</tbody>`;
     }
-    tr.innerHTML = `<td>${i}</td><td>${row.a}</td><td>${row.b}</td><td>${queriedRows.includes(i) ? 'yes' : 'no'}</td>`;
-    tbody.appendChild(tr);
-  });
 
-  table.appendChild(thead);
-  table.appendChild(tbody);
+    // Transition residuals
+    const out = $('air-constraints');
+    if (out) {
+      const lines = [
+        'Transition constraint:  C(i) = t[i+2] − t[i+1] − t[i]   (must be 0)',
+        'Boundary constraints:   t[0] = 1,  t[1] = 1',
+        '',
+        ...a.transitions.map((t) => `  C(${t.i.toString().padStart(2)}) = ${t.value}${t.value === 0n ? '' : '   ← VIOLATED'}`),
+      ];
+      out.textContent = lines.join('\n');
+    }
+
+    const allZero = a.transitions.every((t) => t.value === 0n) && a.boundaryOk;
+    setText(
+      'air-status',
+      allZero
+        ? `Valid trace. Interpolated trace polynomial f has degree ${a.traceDegree} (< ${n}), so it is genuinely low degree.`
+        : 'Constraints VIOLATED — this trace is not a valid Fibonacci computation. A real STARK turns this fact into a high-degree polynomial that FRI will reject.',
+    );
+    const s = $('air-status');
+    if (s) s.className = `hash-label ${allZero ? 'status-ok' : 'status-bad'}`;
+  }
+
+  nSel?.addEventListener('change', render);
+  $('air-generate-trace')?.addEventListener('click', () => {
+    tampered = false;
+    render();
+  });
+  $('air-check')?.addEventListener('click', render);
+  $('air-tamper')?.addEventListener('click', () => {
+    tampered = true;
+    render();
+  });
+  render();
 }
 
-function bindExhibit4(): void {
+function renderFriViz(target: HTMLElement, layers: FriLayerInfo[], finalConstant: boolean): void {
+  const W = 640;
+  const margin = 30;
+  const rowGap = 70;
+  const H = layers.length * rowGap;
+  const cx = (i: number, size: number): number => margin + ((i + 0.5) * (W - 2 * margin)) / size;
+
+  let lines = '';
+  let dots = '';
+  let labels = '';
+  for (let r = 0; r < layers.length; r += 1) {
+    const size = layers[r].size;
+    const y = r * rowGap + 30;
+    const isFinal = r === layers.length - 1;
+    labels += `<text x="2" y="${y + 4}" class="viz-label">${size}</text>`;
+    if (r < layers.length - 1) {
+      const half = size / 2;
+      const ny = (r + 1) * rowGap + 30;
+      for (let i = 0; i < half; i += 1) {
+        const xt = cx(i, half).toFixed(1);
+        lines += `<line x1="${cx(i, size).toFixed(1)}" y1="${y}" x2="${xt}" y2="${ny}" class="viz-line"/>`;
+        lines += `<line x1="${cx(i + half, size).toFixed(1)}" y1="${y}" x2="${xt}" y2="${ny}" class="viz-line"/>`;
+      }
+    }
+    const r0 = size > 64 ? 1.6 : 3;
+    for (let i = 0; i < size; i += 1) {
+      const cls = isFinal ? (finalConstant ? 'viz-dot-ok' : 'viz-dot-bad') : 'viz-dot';
+      dots += `<circle cx="${cx(i, size).toFixed(1)}" cy="${y}" r="${r0}" class="${cls}"/>`;
+    }
+  }
+  target.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="fri-svg" preserveAspectRatio="xMidYMid meet">${lines}${dots}${labels}</svg>`;
+}
+
+// --------------------------------------------------------------------------
+// Exhibit 3 — FRI
+// --------------------------------------------------------------------------
+function bindExhibit3(): void {
+  const degSel = $('fri-degree') as HTMLSelectElement | null;
+  const tamperBox = $('fri-tamper') as HTMLInputElement | null;
+
+  async function run(): Promise<void> {
+    const degree = Number(degSel?.value ?? 8);
+    const tamper = tamperBox?.checked ?? false;
+    setText('fri-status', 'Folding…');
+    const r = await friDemo(degree, { tamper });
+
+    const table = $('fri-table');
+    if (table) {
+      const head = '<thead><tr><th>round</th><th>domain</th><th>est. degree</th><th>challenge β</th><th>layer root</th></tr></thead>';
+      const body = r.layers
+        .map((l, i) => {
+          const isFinal = i === r.layers.length - 1;
+          return `<tr class="${isFinal ? 'fri-final' : ''}"><td>${i}</td><td>${l.size}</td><td>${l.degree}</td><td>${
+            l.beta ? l.beta : '—'
+          }</td><td class="mono-cell">${l.rootHex.slice(0, 12)}…</td></tr>`;
+        })
+        .join('');
+      table.innerHTML = head + `<tbody>${body}</tbody>`;
+    }
+
+    setText('fri-size', `Estimated query payload: ${r.proofBytesEstimate.toLocaleString()} bytes (${r.numFolds} folds, ${r.domainSize}→${r.domainSize >> r.numFolds} evaluations).`);
+
+    const viz = $('fri-viz');
+    if (viz) renderFriViz(viz, r.layers, r.finalConstant);
+
+    const verdict = $('fri-verdict');
+    if (verdict) {
+      verdict.className = `verdict ${r.finalConstant ? 'verdict-ok' : 'verdict-bad'}`;
+      verdict.textContent = r.finalConstant
+        ? `✓ LOW DEGREE — the final layer collapsed to the single constant ${r.finalValues[0]}. FRI accepts.`
+        : '✗ NOT LOW DEGREE — the final layer is not constant, so FRI rejects. This is exactly how a tampered trace gets caught.';
+    }
+    setText('fri-status', tamper ? 'Folded a deliberately high-degree polynomial.' : `Folded a degree-${degree} polynomial down to a constant.`);
+  }
+
+  degSel?.addEventListener('change', () => void run());
+  tamperBox?.addEventListener('change', () => void run());
+  $('fri-run')?.addEventListener('click', () => void run());
+  void run();
+}
+
+// --------------------------------------------------------------------------
+// Exhibit 4 — proof size
+// --------------------------------------------------------------------------
+async function bindExhibit4(): Promise<void> {
   const benchmarks = [
-    { system: 'Groth16 (SNARK)', computation: 'Any circuit', bytes: 128, verification: '~1ms' },
-    { system: 'PLONK (SNARK)', computation: 'Any circuit', bytes: 400, verification: '~3ms' },
-    { system: 'STARK (BLAKE3 hash)', computation: 'Fibonacci (1M steps)', bytes: 45 * 1024, verification: '~10ms' },
-    { system: 'STARK (SHA-256)', computation: 'SHA-256 circuit', bytes: 100 * 1024, verification: '~20ms' },
-    { system: 'StarkNet-style STARK', computation: 'Cairo VM execution', bytes: 175 * 1024, verification: '~50ms' },
-    { system: 'Risc Zero receipt', computation: 'RISC-V execution', bytes: 200 * 1024, verification: '~50ms' },
+    { system: 'Groth16 (SNARK)', computation: 'Any circuit', bytes: 128, verification: '~1 ms' },
+    { system: 'PLONK (SNARK)', computation: 'Any circuit', bytes: 400, verification: '~3 ms' },
+    { system: 'STARK (BLAKE3)', computation: 'Fibonacci, 1M steps', bytes: 45 * 1024, verification: '~10 ms' },
+    { system: 'STARK (SHA-256)', computation: 'SHA-256 circuit', bytes: 100 * 1024, verification: '~20 ms' },
+    { system: 'StarkNet-style', computation: 'Cairo VM execution', bytes: 175 * 1024, verification: '~50 ms' },
+    { system: 'Risc Zero receipt', computation: 'RISC-V execution', bytes: 200 * 1024, verification: '~50 ms' },
   ];
 
-  const table = document.getElementById('size-table');
+  const table = $('size-table');
   if (table) {
     table.innerHTML = [
-      '<thead><tr><th>System</th><th>Computation</th><th>Proof Size</th><th>Verification</th></tr></thead>',
+      '<thead><tr><th>System</th><th>Computation</th><th>Proof size</th><th>Verify</th></tr></thead>',
       '<tbody>',
-      ...benchmarks.map((b) => `<tr><td>${b.system}</td><td>${b.computation}</td><td>${b.bytes.toLocaleString()} bytes</td><td>${b.verification}</td></tr>`),
+      ...benchmarks.map(
+        (b) => `<tr><td>${b.system}</td><td>${b.computation}</td><td>${b.bytes.toLocaleString()} bytes</td><td>${b.verification}</td></tr>`,
+      ),
       '</tbody>',
     ].join('');
   }
 
-  const chart = document.getElementById('size-chart');
-  if (!chart) return;
-
-  const minLog = Math.log10(Math.min(...benchmarks.map((b) => b.bytes)));
-  const maxLog = Math.log10(Math.max(...benchmarks.map((b) => b.bytes)));
-
-  chart.innerHTML = '';
-  for (const b of benchmarks) {
-    const scaled = ((Math.log10(b.bytes) - minLog) / (maxLog - minLog || 1)) * 100;
-    const row = document.createElement('div');
-    row.className = 'chart-row';
-    row.innerHTML = `
-      <div class="chart-label">${b.system}</div>
-      <div class="chart-bar-wrap"><div class="chart-bar" style="width:${Math.max(4, scaled)}%"></div></div>
-      <div class="chart-value">${b.bytes.toLocaleString()}</div>
-    `;
-    chart.appendChild(row);
-  }
-}
-
-let airTrace: TraceRow[] = [];
-let airProof: ToyProof | null = null;
-let airQueryRows: number[] = [];
-
-function bindExhibit2(): void {
-  const nInput = document.getElementById('air-n') as HTMLInputElement | null;
-  const status = document.getElementById('air-status');
-  const constraintsOut = document.getElementById('air-constraints');
-  const proofOut = document.getElementById('air-proof');
-
-  document.getElementById('air-generate-trace')?.addEventListener('click', () => {
-    const n = Math.min(16, Math.max(8, Number(nInput?.value ?? 16)));
-    airTrace = buildFibonacciTrace(n);
-    renderTraceTable(airTrace);
-    if (status) status.textContent = `Trace generated with ${n} rows.`;
-  });
-
-  document.getElementById('air-generate-constraints')?.addEventListener('click', () => {
-    if (airTrace.length === 0) {
-      airTrace = buildFibonacciTrace(Math.min(16, Math.max(8, Number(nInput?.value ?? 16))));
-      renderTraceTable(airTrace);
+  const chart = $('size-chart');
+  if (chart) {
+    const minLog = Math.log10(Math.min(...benchmarks.map((b) => b.bytes)));
+    const maxLog = Math.log10(Math.max(...benchmarks.map((b) => b.bytes)));
+    chart.innerHTML = '';
+    for (const b of benchmarks) {
+      const scaled = ((Math.log10(b.bytes) - minLog) / (maxLog - minLog || 1)) * 100;
+      const row = document.createElement('div');
+      row.className = 'chart-row';
+      row.innerHTML =
+        `<div class="chart-label">${b.system}</div>` +
+        `<div class="chart-bar-wrap"><div class="chart-bar" style="width:${Math.max(4, scaled)}%"></div></div>` +
+        `<div class="chart-value">${b.bytes.toLocaleString()}</div>`;
+      chart.appendChild(row);
     }
-
-    const lines = [
-      'Transition constraints:',
-      'C1(i) = next_a(i) - b(i) = 0',
-      'C2(i) = next_b(i) - (a(i) + b(i)) = 0',
-      'Boundary: a(0)=1, b(0)=1',
-      '',
-      ...evaluateConstraints(airTrace).map((v, i) => `row ${i}: C1 + C2 = ${v}`),
-    ];
-    if (constraintsOut) constraintsOut.textContent = lines.join('\n');
-    if (status) status.textContent = 'AIR constraints displayed.';
-  });
-
-  document.getElementById('air-prove')?.addEventListener('click', async () => {
-    const n = Math.min(16, Math.max(8, Number(nInput?.value ?? 16)));
-    const { proof, trace, queryRows } = await buildToyProof(n);
-    airTrace = trace;
-    airProof = proof;
-    airQueryRows = queryRows;
-    renderTraceTable(airTrace, airQueryRows);
-
-    if (proofOut) {
-      proofOut.textContent = [
-        `${proof.label}`,
-        `Trace commitment root: ${proof.traceRoot}`,
-        ...proof.compositionRoots.map((r, i) => `FRI round ${i} root: ${r}`),
-        `Final constant: ${proof.finalConstant}`,
-        `Queries: ${proof.queryCount} (rows: ${airQueryRows.join(', ')})`,
-      ].join('\n');
-    }
-
-    if (status) status.textContent = 'Proof generated. Verifier can now sample queried rows.';
-  });
-
-  document.getElementById('air-verify')?.addEventListener('click', async () => {
-    if (!airProof) {
-      if (status) status.textContent = 'Generate a proof first.';
-      return;
-    }
-
-    const constraintsHold = airQueryRows.every((i) => {
-      if (i >= airTrace.length - 1) return true;
-      const row = airTrace[i];
-      const next = airTrace[i + 1];
-      return next.a === row.b && next.b === add(row.a, row.b);
-    });
-
-    const friResult = await verifyToyProof(airProof);
-    const valid = constraintsHold && friResult.ok;
-
-    if (proofOut) {
-      proofOut.textContent = `${proofOut.textContent ?? ''}\n\nVerifier checks:\n- Queried transition checks: ${constraintsHold ? 'pass' : 'fail'}\n- FRI consistency: ${friResult.ok ? 'pass' : 'fail'}\n- Result: ${valid ? '✓ valid proof' : '✗ invalid proof'}`;
-    }
-
-    if (status) status.textContent = valid ? 'Verification succeeded.' : 'Verification failed.';
-  });
-}
-
-let friState: {
-  values: bigint[];
-  roots: string[];
-  rounds: bigint[][];
-  trees: MerkleTree[];
-  challenges: bigint[];
-} | null = null;
-
-function bindExhibit3(): void {
-  const degreeInput = document.getElementById('fri-degree') as HTMLSelectElement | null;
-  const status = document.getElementById('fri-status');
-  const log = document.getElementById('fri-log');
-  const size = document.getElementById('fri-size');
-
-  function logLine(text: string): void {
-    if (!log) return;
-    log.textContent = `${log.textContent ?? ''}${text}\n`;
   }
 
-  document.getElementById('fri-commit')?.addEventListener('click', async () => {
-    const degree = Number(degreeInput?.value ?? 8);
-    const coeffs = new Array<bigint>(degree + 1).fill(0n).map((_, i) => BigInt(i + 3));
-    const domainSize = nextPow2((degree + 1) * 2);
-    const values = new Array<bigint>(domainSize).fill(0n).map((_, i) => polyEval(coeffs, BigInt(i + 1)));
-    const tree = await buildMerkle(values);
-
-    friState = {
-      values,
-      roots: [tree.rootHex],
-      rounds: [values],
-      trees: [tree],
-      challenges: [],
-    };
-
-    if (log) log.textContent = '';
-    logLine(`Round 0 commit root: ${tree.rootHex}`);
-    if (status) status.textContent = `Committed degree-${degree} polynomial evaluations.`;
-    if (size) size.textContent = `Current proof payload estimate: ${(4 * Math.log2(domainSize) * 32).toFixed(0)} bytes.`;
-  });
-
-  document.getElementById('fri-fold')?.addEventListener('click', async () => {
-    if (!friState) {
-      if (status) status.textContent = 'Run commit first.';
-      return;
-    }
-
-    const current = friState.rounds[friState.rounds.length - 1];
-    if (current.length <= 2) {
-      if (status) status.textContent = 'Already at final round.';
-      return;
-    }
-
-    const challenge = await challengeFromTranscript(`${friState.roots.join('|')}|fold${friState.rounds.length}`);
-    friState.challenges.push(challenge);
-    const next: bigint[] = [];
-    for (let i = 0; i < current.length; i += 2) {
-      next.push(add(current[i], mul(challenge, current[i + 1])));
-    }
-    const tree = await buildMerkle(next);
-    friState.rounds.push(next);
-    friState.trees.push(tree);
-    friState.roots.push(tree.rootHex);
-
-    logLine(`Fold round ${friState.rounds.length - 1}: challenge=${challenge}, new root=${tree.rootHex}, degree halved.`);
-    if (status) status.textContent = `Folded to ${next.length} evaluations.`;
-    if (size) {
-      const pathLen = Math.log2(friState.rounds[0].length);
-      const est = friState.rounds.length * 4 * pathLen * 32;
-      size.textContent = `Current proof payload estimate: ${Math.round(est).toLocaleString()} bytes.`;
-    }
-  });
-
-  document.getElementById('fri-query')?.addEventListener('click', async () => {
-    if (!friState || friState.rounds.length < 2) {
-      if (status) status.textContent = 'Commit and fold at least once first.';
-      return;
-    }
-
-    const firstLen = friState.rounds[0].length / 2;
-    const seed = await challengeFromTranscript(`${friState.roots[0]}|query`);
-    const pair = Number(seed % BigInt(firstLen));
-    logLine(`Query phase pair index chosen: ${pair}`);
-
-    let idx = pair;
-    for (let r = 0; r < friState.rounds.length - 1; r += 1) {
-      const left = idx * 2;
-      const right = left + 1;
-      const next = idx;
-      const leftOpen = openMerkle(friState.trees[r], friState.rounds[r], left);
-      const rightOpen = openMerkle(friState.trees[r], friState.rounds[r], right);
-      const nextOpen = openMerkle(friState.trees[r + 1], friState.rounds[r + 1], next);
-      logLine(`Round ${r} openings:`);
-      logLine(`  left=${leftOpen.value} right=${rightOpen.value} next=${nextOpen.value}`);
-      logLine(`  Merkle path length=${leftOpen.path.length}`);
-      idx = Math.floor(idx / 2);
-    }
-
-    if (status) status.textContent = 'Query phase complete; see transcript.';
-  });
+  // Ground it: measure this demo's own toy proof.
+  const { proof } = await prove(16);
+  const bytes = JSON.stringify(proof).length;
+  setText(
+    'size-measured',
+    `This page's own toy proof (N=16, blowup 8, ${proof.params.numQueries} queries) serializes to ${bytes.toLocaleString()} bytes — tiny because the parameters are tiny. Production proofs scale this construction up to real security.`,
+  );
 }
 
-let e2eProof: ToyProof | null = null;
-let e2eTrace: TraceRow[] = [];
+// --------------------------------------------------------------------------
+// Exhibit 4 — security ↔ size ↔ speed calculator
+// --------------------------------------------------------------------------
+function bindSecurityCalc(): void {
+  const blowupEl = $('sec-blowup') as HTMLInputElement | null;
+  const queriesEl = $('sec-queries') as HTMLInputElement | null;
+  if (!blowupEl || !queriesEl) return;
 
+  function update(): void {
+    const rateLog = Number(blowupEl!.value); // 1..6
+    const blowup = 2 ** rateLog;
+    const queries = Number(queriesEl!.value);
+    const bits = securityBits(blowup, queries);
+    // Illustrative payload for a 1024-row trace (10 folds), Merkle paths grow
+    // with the LDE size = 1024 * blowup.
+    const folds = 10;
+    const pathLen = 10 + rateLog;
+    const bytes = queries * folds * 2 * pathLen * 32;
+
+    setText('sec-blowup-val', `${blowup}`);
+    setText('sec-queries-val', `${queries}`);
+    setText('sec-bits', `${bits}`);
+    setText('sec-bytes', `${(bytes / 1024).toFixed(1)} KB`);
+    setText(
+      'sec-note',
+      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path.`,
+    );
+    const bitsEl = $('sec-bits');
+    if (bitsEl) bitsEl.className = `sec-num ${bits >= 100 ? 'status-ok' : bits < 80 ? 'status-bad' : ''}`;
+  }
+
+  blowupEl.addEventListener('input', update);
+  queriesEl.addEventListener('input', update);
+  update();
+}
+
+// --------------------------------------------------------------------------
+// Exhibit 5 — end-to-end
+// --------------------------------------------------------------------------
 function bindExhibit5(): void {
-  const nInput = document.getElementById('e2e-n') as HTMLInputElement | null;
-  const status = document.getElementById('e2e-status');
-  const log = document.getElementById('e2e-log');
+  const nSel = $('e2e-n') as HTMLSelectElement | null;
+  let proof: StarkProof | null = null;
+  let corrupted = false;
 
-  function write(text: string): void {
-    if (log) log.textContent = text;
+  function showTranscript(lines: string[]): void {
+    const el = $('e2e-transcript');
+    if (el) el.textContent = lines.join('\n');
   }
 
-  document.getElementById('e2e-prove')?.addEventListener('click', async () => {
-    const n = Math.min(16, Math.max(8, Number(nInput?.value ?? 16)));
-    const { proof, trace } = await buildToyProof(n, false);
-    e2eProof = proof;
-    e2eTrace = trace;
-    write(JSON.stringify(proof, null, 2));
-    if (status) status.textContent = `Proof generated (${proof.queryCount} queries per protocol).`;
-  });
+  function renderSuccinct(p: StarkProof): void {
+    const target = $('e2e-succinct');
+    if (!target) return;
+    const s = proofStats(p);
+    const pct = ((s.uniqueTracePointsOpened / s.ldeSize) * 100).toFixed(0);
+    target.innerHTML =
+      `<p>To be convinced, the verifier opened <strong>${s.uniqueTracePointsOpened}</strong> distinct trace points ` +
+      `out of an LDE of <strong>${s.ldeSize}</strong> (≈${pct}%), plus <strong>${s.friOpenings}</strong> FRI-layer points — ` +
+      `and never reconstructed the length-${s.traceLength} computation.</p>` +
+      `<div class="succinct-grid">` +
+      `<div class="sec-stat"><span class="sec-num">${s.proofBytes.toLocaleString()}</span><span class="sec-cap">proof bytes</span></div>` +
+      `<div class="sec-stat"><span class="sec-num">${s.uniqueTracePointsOpened + s.friOpenings}</span><span class="sec-cap">committed values seen</span></div>` +
+      `<div class="sec-stat"><span class="sec-num">~${s.estimatedSecurityBits}</span><span class="sec-cap">soundness bits (toy)</span></div>` +
+      `</div>`;
+  }
 
-  document.getElementById('e2e-verify')?.addEventListener('click', async () => {
-    if (!e2eProof) {
-      if (status) status.textContent = 'Generate proof first.';
+  function renderInspector(p: StarkProof): void {
+    const target = $('e2e-inspector');
+    if (!target) return;
+    const q = p.queries[0];
+    const trunc = (v: string): string => (v.length > 10 ? v.slice(0, 10) + '…' : v);
+    const lines = [
+      `Query #0 — LDE position ${q.index}`,
+      '',
+      'Trace openings (the only witness data revealed):',
+      `  f(x)     @${q.fx.index}: ${trunc(q.fx.value)}   (Merkle path: ${q.fx.path.length} hashes)`,
+      `  f(w·x)   @${q.fwx.index}: ${trunc(q.fwx.value)}   (Merkle path: ${q.fwx.path.length} hashes)`,
+      `  f(w²·x)  @${q.fw2x.index}: ${trunc(q.fw2x.value)}   (Merkle path: ${q.fw2x.path.length} hashes)`,
+      '',
+      'FRI fold openings (pair → next layer), per round:',
+      ...q.layers.map(
+        (l, r) => `  round ${r}: layer[${l.a}]=${trunc(l.valA)}, layer[${l.b}]=${trunc(l.valB)}  → fold checked`,
+      ),
+      '',
+      'The verifier checks these hashes and the low-degree test. Nothing else.',
+    ];
+    target.textContent = lines.join('\n');
+  }
+
+  const zkBox = $('e2e-zk') as HTMLInputElement | null;
+
+  async function generate(tamper: boolean): Promise<void> {
+    const n = Number(nSel?.value ?? 16);
+    const zk = zkBox?.checked ?? false;
+    setText('e2e-status', tamper ? 'Generating a proof for a tampered trace…' : 'Generating proof…');
+    const r = await prove(n, { tamper, zk });
+    proof = r.proof;
+    corrupted = tamper;
+    showTranscript(r.diag.transcript);
+    renderSuccinct(proof);
+    renderInspector(proof);
+    const checks = $('e2e-checks');
+    if (checks) checks.innerHTML = '<p class="hint">Proof generated. Click <strong>Verify proof</strong> to run the verifier.</p>';
+    setText(
+      'e2e-status',
+      tamper
+        ? `Proof built for a TAMPERED trace (row ${Math.floor(n / 2)} altered). The prover played honest with FRI, so only the low-degree test can catch it. Now verify.`
+        : `Proof generated for n=${n}${zk ? ' (zero-knowledge: trace masked)' : ''}. The proof is ${JSON.stringify(proof).length.toLocaleString()} bytes and contains no full trace.`,
+    );
+  }
+
+  $('e2e-prove')?.addEventListener('click', () => void generate(false));
+  $('e2e-corrupt')?.addEventListener('click', () => void generate(true));
+
+  $('e2e-verify')?.addEventListener('click', async () => {
+    if (!proof) {
+      setText('e2e-status', 'Generate a proof first.');
       return;
     }
-
-    const fri = await verifyToyProof(e2eProof);
-    const boundary = e2eTrace[0]?.a === 1n && e2eTrace[0]?.b === 1n;
-    const transitions = e2eTrace.slice(0, -1).every((row, i) => {
-      const next = e2eTrace[i + 1];
-      return next.a === row.b && next.b === add(row.a, row.b);
-    });
-
-    const ok = fri.ok && boundary && transitions;
-    const report = [
-      `Verification outcome: ${ok ? '✓ valid' : '✗ invalid'}`,
-      `Boundary check: ${boundary ? 'pass' : 'fail'}`,
-      `Transition checks: ${transitions ? 'pass' : 'fail'}`,
-      `FRI checks: ${fri.ok ? 'pass' : 'fail'}`,
-      ...fri.details,
-    ];
-
-    write(`${log?.textContent ?? ''}\n\n${report.join('\n')}`);
-    if (status) status.textContent = ok ? 'Verification accepted.' : 'Verification rejected.';
+    setText('e2e-status', 'Verifying… (checking only commitments + low-degree test)');
+    const result: VerifyResult = await verify(proof);
+    const checks = $('e2e-checks');
+    if (checks) renderCheckList(checks, result);
+    setText(
+      'e2e-status',
+      result.accepted
+        ? 'Verification ACCEPTED.'
+        : corrupted
+          ? 'Verification REJECTED — and notice the verifier never re-ran Fibonacci. The cheat surfaced as a failed low-degree test.'
+          : 'Verification REJECTED.',
+    );
   });
 
-  document.getElementById('e2e-corrupt')?.addEventListener('click', async () => {
-    const n = Math.min(16, Math.max(8, Number(nInput?.value ?? 16)));
-    const { proof, trace } = await buildToyProof(n, true);
-    e2eProof = proof;
-    e2eTrace = trace;
-    if (status) status.textContent = 'Trace corrupted intentionally. Run verify to observe rejection.';
-    write(`${JSON.stringify(proof, null, 2)}\n\nTamper marker: row 4 altered before commitment.`);
-  });
+  showTranscript(['No proof generated yet.', '', 'Click "Generate proof" to run the prover, then "Verify proof".']);
+}
+
+// --------------------------------------------------------------------------
+// Exhibit 5·ZK — masking experiment
+// --------------------------------------------------------------------------
+function renderZkHistogram(target: HTMLElement, exp: ZkExperiment): void {
+  const maxCount = Math.max(...exp.realHistogram, ...exp.simHistogram, 1);
+  // Bucket index of the true (unmasked) value, for the marker. Denominator is P.
+  const tb = Number((BigInt(exp.trueValue) * BigInt(exp.buckets)) / (2n ** 30n * 3n + 1n));
+  const cols = exp.realHistogram
+    .map((real, i) => {
+      const sim = exp.simHistogram[i];
+      const rh = (real / maxCount) * 100;
+      const sh = (sim / maxCount) * 100;
+      const marker = i === tb ? '<div class="zk-true">▲ true value</div>' : '';
+      return (
+        `<div class="zk-col">` +
+        `<div class="zk-bars">` +
+        `<div class="zk-bar zk-bar-real" style="height:${rh.toFixed(1)}%" title="masked: ${real}"></div>` +
+        `<div class="zk-bar zk-bar-sim" style="height:${sh.toFixed(1)}%" title="simulator: ${sim}"></div>` +
+        `</div>${marker}</div>`
+      );
+    })
+    .join('');
+  target.innerHTML =
+    `<div class="zk-legend"><span class="zk-key zk-key-real">masked openings</span><span class="zk-key zk-key-sim">witness-free simulator</span></div>` +
+    `<div class="zk-hist" role="img" aria-label="Histogram comparing masked openings to a witness-free simulator across field-value buckets">${cols}</div>`;
+}
+
+function bindZk(): void {
+  async function run(): Promise<void> {
+    setText('zk-note', 'Drawing masked openings with fresh randomness…');
+    // Pure arithmetic — fine to run synchronously after a paint tick.
+    await new Promise((r) => setTimeout(r, 0));
+    const exp = zkOpeningExperiment(16, 5, 600, 16);
+    const viz = $('zk-viz');
+    if (viz) renderZkHistogram(viz, exp);
+    const stats = $('zk-stats');
+    if (stats) {
+      stats.innerHTML =
+        `<div class="sec-stat"><span class="sec-num">${exp.distinctOpenings}/${exp.trials}</span><span class="sec-cap">distinct openings</span></div>` +
+        `<div class="sec-stat"><span class="sec-num ${exp.leakedCount === 0 ? 'status-ok' : 'status-bad'}">${exp.leakedCount}</span><span class="sec-cap">true-value leaks</span></div>` +
+        `<div class="sec-stat"><span class="sec-num">${(exp.maxBucketGap * 100).toFixed(1)}%</span><span class="sec-cap">max gap vs simulator</span></div>` +
+        `<div class="sec-stat"><span class="sec-num">${exp.pairwiseCorrelation.toFixed(3)}</span><span class="sec-cap">cross-point correlation</span></div>`;
+    }
+    setText(
+      'zk-note',
+      `Across ${exp.trials} fresh-randomness runs, masked openings spread ~uniformly and match the witness-free simulator (max gap ${(exp.maxBucketGap * 100).toFixed(1)}%). The true value never leaked. The opened points reveal nothing about the witness.`,
+    );
+  }
+  $('zk-run')?.addEventListener('click', () => void run());
+  void run();
 }
 
 function init(): void {
   initThemeToggle();
   bindExhibit2();
   bindExhibit3();
-  bindExhibit4();
+  void bindExhibit4();
+  bindSecurityCalc();
   bindExhibit5();
+  bindZk();
 }
 
 if (document.readyState === 'loading') {
