@@ -4,3 +4,8 @@ dist/
 
 # generated test bundles
 scripts/*_bundle.mjs
+
+# playwright / a11y
+/test-results/
+/playwright-report/
+/.pw-browsers/
