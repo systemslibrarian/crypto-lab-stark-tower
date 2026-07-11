@@ -131,7 +131,6 @@
   })();
 </script>
 <!-- END crypto-lab shared header -->
-  <a href="#main-content" class="skip-link">Skip to main content</a>
   <div class="site-shell">
     <header class="site-header" role="banner">
       <div>
@@ -141,7 +140,7 @@
       </div>
     </header>
 
-    <main class="wrap" id="main-content">
+    <main class="wrap" id="app">
       <section class="hero-panel">
         <p class="hero-lead">Groth16 and PLONK dominate SNARK deployments. STARKs trade trusted setup for transparency and pairing assumptions for hash-based, post-quantum security.</p>
         <p class="hero-note">This demo runs a real (if small) STARK in your browser over the STARK-101 field <code>p = 3·2³⁰ + 1</code>: a trace polynomial, a constraint quotient, a SHA-256 Merkle commitment, and a genuine FRI low-degree test. The one idea everything builds toward — <strong>a tampered trace is caught by the proof system itself, not by recomputing Fibonacci</strong> — is demonstrated live in Exhibit&nbsp;05.</p>
@@ -326,7 +325,7 @@
       <section class="exhibit" id="exhibit-5" aria-labelledby="ex5-title">
         <div class="ex-row"><span class="ex-num">EXHIBIT 05</span><span class="badge badge-real">End-to-End STARK</span></div>
         <h2 class="ex-title" id="ex5-title">Step 3 — Prove and Verify in the Browser</h2>
-        <div class="trust-banner trust-conceptual"><strong>The honest core.</strong> This runs the full protocol: trace LDE + Merkle commitment, composition quotient, real FRI, and query decommitments. The verifier receives <em>only the proof</em> — never your trace — and accepts or rejects from Merkle openings plus the FRI low-degree test. Parameters are toy (≈20-bit), and zero-knowledge masking is omitted for clarity; the soundness mechanism is real.</div>
+        <div class="trust-banner trust-conceptual"><strong>The honest core.</strong> This runs the full protocol: trace LDE + Merkle commitment, composition quotient, real FRI, and query decommitments. The verifier receives <em>only the proof</em> — never your trace — and accepts or rejects from Merkle openings plus the FRI low-degree test. Parameters are toy (≈20-bit) and zero-knowledge masking is off by default — tick <em>Zero-knowledge mode</em> below to add it; the soundness mechanism is real.</div>
         <div class="callout">
           <strong>Watch for this:</strong> after <em>Corrupt trace → Verify proof</em>, the failing check is <em>"FRI low-degree test"</em>, not a trace recomputation. That is the entire point of a STARK: the cheat is caught algebraically, succinctly, blind to the witness.
         </div>
