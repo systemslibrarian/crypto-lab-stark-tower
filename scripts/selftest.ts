@@ -115,6 +115,22 @@ async function main() {
   await rejects('swap a Merkle path hash', (p) => { const pa = p.queries[0].fx.path; pa[0] = pa[0].slice(0, -1) + (pa[0].endsWith('0') ? '1' : '0'); });
   await rejects('forge final layer to a fake constant', (p) => { p.finalLayer = p.finalLayer.map(() => '12345'); });
 
+  // --- Structural forgeries: a proof must carry exactly what the protocol
+  // demands, or the per-query checks could pass vacuously. ---
+  await rejects('strip all queries from the proof', (p) => { p.queries = []; });
+  await rejects('drop one query', (p) => { p.queries.pop(); });
+  await rejects('truncate the final layer to one value', (p) => { p.finalLayer = p.finalLayer.slice(0, 1); });
+  await rejects('claim zero FRI folds', (p) => { p.params.numFolds = 0; p.friRoots = []; p.betas = []; });
+  await rejects('claim a smaller LDE than the blowup requires', (p) => { p.params.ldeSize = p.params.ldeSize / 2; });
+  const stripped = clone();
+  stripped.queries = [];
+  const sres = await verify(stripped);
+  check(
+    'vacuous-pass hole closed: empty query list fails the shape check',
+    !sres.accepted && sres.checks.some((c) => c.name.includes('shape') && !c.ok),
+    sres.checks.find((c) => !c.ok)?.detail ?? '',
+  );
+
   // Boundary tamper (row 0) must be caught too — B0 = (f-1)/(x-1) stops being a
   // polynomial, so CP is high degree and FRI rejects.
   const bnd = await prove(16, { tamper: true, tamperRow: 0 });

@@ -367,6 +367,36 @@ export async function verify(proof: StarkProof): Promise<VerifyResult> {
   const N = proof.params.traceLength;
   const L = proof.params.ldeSize;
   const numFolds = proof.params.numFolds;
+
+  // 0. Proof shape. Every count below is dictated by the public protocol
+  // parameters, so the verifier recomputes them instead of trusting the proof.
+  // Without this, a prover could *claim* 8 queries but ship an empty query
+  // list — the per-query loop would never run and every later check would
+  // pass vacuously.
+  const isPow2 = (x: number): boolean => Number.isInteger(x) && x > 0 && (x & (x - 1)) === 0;
+  const problems: string[] = [];
+  if (proof.params.blowup !== BLOWUP) problems.push(`blowup ${proof.params.blowup} ≠ ${BLOWUP}`);
+  if (proof.params.numQueries !== NUM_QUERIES) problems.push(`declared queries ${proof.params.numQueries} ≠ ${NUM_QUERIES}`);
+  if (!isPow2(N)) problems.push(`trace length ${N} is not a power of two`);
+  const expectedBound = proof.params.zk ? nextPow2(N + 3 * NUM_QUERIES) : N;
+  if (L !== expectedBound * BLOWUP) problems.push(`LDE size ${L} ≠ ${expectedBound * BLOWUP}`);
+  if (numFolds !== Math.log2(expectedBound)) problems.push(`fold count ${numFolds} ≠ log₂(${expectedBound})`);
+  if (proof.friRoots.length !== numFolds) problems.push(`${proof.friRoots.length} FRI roots for ${numFolds} folds`);
+  if (proof.betas.length !== numFolds) problems.push(`${proof.betas.length} FRI challenges for ${numFolds} folds`);
+  if (proof.alphas.length !== 3 || proof.compBetas.length !== 3) problems.push('composition challenge lists have the wrong length');
+  if (proof.finalLayer.length !== L >> numFolds) problems.push(`final layer has ${proof.finalLayer.length} values, expected ${L >> numFolds}`);
+  if (proof.queries.length !== NUM_QUERIES) problems.push(`proof contains ${proof.queries.length} of the required ${NUM_QUERIES} queries`);
+  if (proof.queries.some((q) => q.layers.length !== numFolds)) problems.push('a query is missing FRI layer openings');
+  checks.push({
+    name: 'Proof shape & parameters',
+    ok: problems.length === 0,
+    detail:
+      problems.length === 0
+        ? `All counts match the protocol: ${NUM_QUERIES} queries, ${numFolds} folds, ${L >> numFolds} final-layer values.`
+        : `Malformed proof: ${problems.join('; ')}. Remaining checks skipped.`,
+  });
+  if (problems.length > 0) return { accepted: false, checks };
+
   const offset = BigInt(proof.params.offset);
   const shift = L / N;
   const w = rootOfUnity(N);

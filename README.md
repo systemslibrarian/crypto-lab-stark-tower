@@ -90,7 +90,7 @@ npm test           # crypto self-test + jsdom UI smoke test
 npm run typecheck  # tsc --noEmit
 ```
 
-`npm test` asserts that honest proofs are accepted, tampered proofs are rejected **via the low-degree test** (not recomputation), flipped Merkle leaves are rejected, and every exhibit behaves correctly in a headless DOM.
+`npm test` asserts that honest proofs are accepted, tampered proofs are rejected **via the low-degree test** (not recomputation), flipped Merkle leaves are rejected, structurally malformed proofs (stripped queries, truncated FRI layers, forged parameters) are rejected, and every exhibit behaves correctly in a headless DOM.
 
 ---
 
