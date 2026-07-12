@@ -28,11 +28,13 @@ function setText(id: string, text: string): void {
 // --------------------------------------------------------------------------
 function initThemeToggle(): void {
   const root = document.documentElement;
-  const header = document.querySelector('.site-header');
+  const header = document.querySelector('.cl-hero');
   if (!header) return;
   const button = document.createElement('button');
   button.className = 'theme-toggle';
   button.type = 'button';
+  button.hidden = true;
+  button.setAttribute('aria-hidden', 'true');
   const apply = (): void => {
     const isDark = root.getAttribute('data-theme') !== 'light';
     button.textContent = isDark ? '🌙' : '☀️';

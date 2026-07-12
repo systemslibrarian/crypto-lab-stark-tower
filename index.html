@@ -132,17 +132,20 @@
 </script>
 <!-- END crypto-lab shared header -->
   <div class="site-shell">
-    <header class="site-header" role="banner">
-      <div>
-        <div class="brand-kicker">Crypto-Lab System Gallery</div>
-        <h1 class="brand-title">STARK Tower</h1>
-        <p class="brand-sub">An honest, working walkthrough of transparent, post-quantum zk-STARKs — built so the verifier really catches a cheating prover without re-running the computation.</p>
-      </div>
-    </header>
-
     <main class="wrap" id="app">
+      <header class="cl-hero">
+        <div class="cl-hero-main">
+          <h1 class="cl-hero-title">STARK Tower</h1>
+          <p class="cl-hero-sub">zk-STARK · AIR + FRI · Post-Quantum</p>
+          <p class="cl-hero-desc">Run a real (if small) STARK in your browser — build a trace polynomial and AIR constraints, commit with a SHA-256 Merkle tree, and watch a FRI low-degree test decide whether the proof is accepted or the cheat is caught.</p>
+        </div>
+        <aside class="cl-hero-why" aria-label="Why it matters">
+          <span class="cl-hero-why-label">WHY IT MATTERS</span>
+          <p class="cl-hero-why-text">STARKs need no trusted setup and rest only on hash security, so they stay sound even against quantum adversaries. That transparency is why StarkNet, Polygon Miden, and Risc Zero prove correctness at scale without a verifier ever re-running the computation.</p>
+        </aside>
+      </header>
+
       <section class="hero-panel">
-        <p class="hero-lead">Groth16 and PLONK dominate SNARK deployments. STARKs trade trusted setup for transparency and pairing assumptions for hash-based, post-quantum security.</p>
         <p class="hero-note">This demo runs a real (if small) STARK in your browser over the STARK-101 field <code>p = 3·2³⁰ + 1</code>: a trace polynomial, a constraint quotient, a SHA-256 Merkle commitment, and a genuine FRI low-degree test. The one idea everything builds toward — <strong>a tampered trace is caught by the proof system itself, not by recomputing Fibonacci</strong> — is demonstrated live in Exhibit&nbsp;05.</p>
         <div class="hero-actions">
           <a class="resource-link" href="https://starkware.co/stark-101/" target="_blank" rel="noopener noreferrer">STARK-101 Tutorial<span class="sr-only"> (opens in new tab)</span></a>
