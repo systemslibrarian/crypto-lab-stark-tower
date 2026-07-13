@@ -35,8 +35,15 @@ async function driveDemos(page: Page): Promise<void> {
   await clickIfPresent(page, '#air-generate-trace');
   await clickIfPresent(page, '#air-check');
   await clickIfPresent(page, '#air-tamper');
-  // FRI low-degree test
+  // Quotient panel (the missing middle step)
+  await clickIfPresent(page, '#q-tamper');
+  await clickIfPresent(page, '#q-honest');
+  // FRI low-degree test — both the threaded-trace and abstract sources
   await clickIfPresent(page, '#fri-run');
+  await clickIfPresent(page, '#fri-src-abstract');
+  await clickIfPresent(page, '#fri-src-trace');
+  // ZK step 1: one masked opening
+  await clickIfPresent(page, '#zk-one');
   // End-to-end prove / verify / corrupt
   await clickIfPresent(page, '#e2e-prove');
   await clickIfPresent(page, '#e2e-verify');

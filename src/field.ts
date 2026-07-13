@@ -109,6 +109,32 @@ export function interpolate(xs: bigint[], ys: bigint[]): bigint[] {
   return poly.map(mod);
 }
 
+// Polynomial long division: returns { quotient, remainder } with
+// a(x) = quotient(x)·b(x) + remainder(x) and deg(remainder) < deg(b).
+// All arithmetic is exact in F_p. If b divides a cleanly, remainder is the
+// zero polynomial — that clean-division fact is what a valid STARK constraint
+// quotient relies on, and what a tampered trace destroys.
+export function polyDivRem(a: bigint[], b: bigint[]): { quotient: bigint[]; remainder: bigint[] } {
+  const rem = a.map(mod);
+  while (rem.length > 1 && mod(rem[rem.length - 1]) === 0n) rem.pop();
+  const bb = b.map(mod);
+  let bDeg = bb.length - 1;
+  while (bDeg > 0 && mod(bb[bDeg]) === 0n) bDeg -= 1;
+  if (bDeg === 0 && mod(bb[0]) === 0n) throw new Error('Division by zero polynomial');
+  const lcInv = inv(bb[bDeg]);
+  const quotient: bigint[] = new Array(Math.max(1, rem.length - bDeg)).fill(0n);
+  for (let i = rem.length - 1; i >= bDeg; i -= 1) {
+    const coeff = mul(mod(rem[i]), lcInv);
+    quotient[i - bDeg] = coeff;
+    for (let j = 0; j <= bDeg; j += 1) {
+      rem[i - bDeg + j] = sub(rem[i - bDeg + j], mul(coeff, bb[j]));
+    }
+  }
+  let rDeg = rem.length - 1;
+  while (rDeg > 0 && mod(rem[rDeg]) === 0n) rDeg -= 1;
+  return { quotient, remainder: rem.slice(0, rDeg + 1) };
+}
+
 // Horner evaluation.
 export function polyEval(coeffs: bigint[], x: bigint): bigint {
   let acc = 0n;

@@ -10,6 +10,11 @@
   --ok: #34d399;
   --err: #f87171;
   --warn: #fbbf24;
+  /* Stronger variants for SMALL green/red text that sits on a tinted chip or
+     panel background, where the base --ok/--err would drop below AA contrast.
+     In dark theme the base colors already pass, so these alias to them. */
+  --ok-strong: #34d399;
+  --err-strong: #f87171;
   --tx: #f4f8ff;
   --tx2: #cad8f0;
   --tx3: #93a8ca;
@@ -35,6 +40,8 @@ html[data-theme='light'] {
   --ok: #0d8a5b;
   --err: #c94343;
   --warn: #9d6a00;
+  --ok-strong: #0a6e49;
+  --err-strong: #b03636;
   --tx: #101827;
   --tx2: #334155;
   --tx3: #51607a;
@@ -292,8 +299,8 @@ code {
 }
 .checkline input { width: 16px; height: 16px; accent-color: var(--acc); }
 
-.status-ok { color: var(--ok); }
-.status-bad { color: var(--err); }
+.status-ok { color: var(--ok-strong); }
+.status-bad { color: var(--err-strong); }
 
 .trace-bad { background: color-mix(in srgb, var(--err) 18%, transparent); }
 .fri-final td { font-weight: 650; background: color-mix(in srgb, var(--ok) 12%, transparent); }
@@ -412,6 +419,86 @@ html[data-theme='light'] .zk-true { color: #0a6e49; }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Inline glossary: a jargon term with a plain-language definition revealed on
+   hover or keyboard focus. Underlined so it reads as interactive. */
+.term { position: relative; display: inline-block; }
+.term-word {
+  border-bottom: 1px dashed var(--acc2);
+  cursor: help;
+  color: var(--tx);
+}
+.term-def {
+  position: absolute;
+  left: 0;
+  top: 1.6em;
+  z-index: 40;
+  width: min(28rem, 78vw);
+  background: var(--elev);
+  border: 1px solid var(--acc);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--tx);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s;
+}
+.term:hover .term-def,
+.term:focus .term-def,
+.term:focus-within .term-def { opacity: 1; visibility: visible; }
+
+/* Quotient panel — the before/after degree flow. */
+.q-flow { display: flex; flex-direction: column; gap: 8px; }
+.q-step {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  border: 1px solid var(--bord); border-radius: 6px; padding: 8px 12px; background: var(--overlay-d);
+}
+.q-step-label { font-size: 12px; color: var(--tx2); }
+.q-step-val { font-size: 13px; color: var(--tx); }
+.q-arrow { text-align: center; font-size: 12px; color: var(--tx3); letter-spacing: 0.05em; }
+.q-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--bord); }
+.q-chip-ok { color: var(--ok-strong); border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.q-chip-bad { color: var(--err-strong); border-color: color-mix(in srgb, var(--err) 55%, transparent); background: color-mix(in srgb, var(--err) 12%, transparent); }
+.q-verdict { margin-top: 4px; border-radius: 6px; padding: 10px 12px; font-size: 13px; border: 1px solid var(--bord); }
+.q-verdict-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); border-color: color-mix(in srgb, var(--ok) 50%, transparent); color: var(--tx); }
+.q-verdict-bad { background: color-mix(in srgb, var(--err) 14%, transparent); border-color: color-mix(in srgb, var(--err) 55%, transparent); color: var(--tx); }
+
+/* FRI guided captions. */
+.fri-guide { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.fri-guide li { display: flex; gap: 10px; align-items: flex-start; font-size: 12px; color: var(--tx2); line-height: 1.55; }
+.fri-guide-key {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700;
+  background: var(--acc); color: var(--on-accent);
+}
+.fri-guide-ok { color: var(--ok-strong); }
+.fri-guide-bad { color: var(--err-strong); }
+
+/* FRI source selector. */
+.fri-source { border: 1px solid var(--bord); border-radius: 6px; padding: 8px 12px 10px; margin-bottom: 10px; }
+.fri-source legend { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tx2); padding: 0 6px; }
+.radioline { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--tx2); margin: 6px 0; line-height: 1.5; }
+.radioline input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--acc); }
+
+/* ZK step 1 — one masked opening changing on each click. */
+.zk-one-viz { display: grid; gap: 6px; margin-top: 6px; }
+.zk-one-secret, .zk-one-row {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--bord); border-radius: 6px; padding: 8px 12px; background: var(--overlay-d);
+}
+.zk-one-secret { border-color: color-mix(in srgb, var(--acc2) 45%, transparent); background: color-mix(in srgb, var(--acc2) 10%, transparent); }
+.zk-one-latest { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.zk-one-label { font-size: 11px; color: var(--tx3); letter-spacing: 0.04em; text-transform: uppercase; margin-top: 4px; }
+.zk-one-tag { font-size: 11px; color: var(--tx2); min-width: 84px; }
+.zk-one-num { font-family: var(--mono); font-size: 13px; color: var(--tx); }
+.zk-one-fixed { margin-left: auto; font-size: 11px; color: var(--ok-strong); }
+.zk-punchline {
+  margin-top: 12px; font-size: 12px; line-height: 1.6; color: var(--tx);
+  border-left: 3px solid var(--acc); padding-left: 10px;
 }
 
 .site-footer {

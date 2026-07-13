@@ -1,7 +1,7 @@
 // Crypto correctness self-test. Bundled by esbuild and run under Node.
 // Asserts: honest proofs verify; tampered proofs are rejected BY THE PROOF
 // SYSTEM (low-degree test), not by recomputing the trace.
-import { prove, verify, airAnalysis, friDemo, zkOpeningExperiment } from '../src/stark';
+import { prove, verify, airAnalysis, quotientAnalysis, friDemo, friFromTrace, zkOpeningExperiment, maskedOpeningSample } from '../src/stark';
 import { P, GENERATOR, rootOfUnity, pow, mul } from '../src/field';
 
 let failures = 0;
@@ -59,6 +59,31 @@ async function main() {
   check('friDemo low-degree collapses to constant', friLow.finalConstant && friLow.lowDegree);
   const friHigh = await friDemo(8, { tamper: true });
   check('friDemo high-degree fails to collapse', !friHigh.finalConstant && !friHigh.lowDegree);
+
+  // --- Quotient panel: the missing middle step is real division, not faked. ---
+  for (const N of [8, 16]) {
+    const qh = quotientAnalysis(N);
+    check(`quotient honest: Z divides C cleanly N=${N}`, qh.cleanDivision && qh.remainderDegree === -1);
+    check(`quotient honest: deg Q within bound N=${N}`, qh.quotientDegree <= qh.cleanQuotientBound, `degQ=${qh.quotientDegree} bound=${qh.cleanQuotientBound}`);
+    const qt = quotientAnalysis(N, Math.floor(N / 2));
+    check(`quotient tamper: division NOT clean (nonzero remainder) N=${N}`, !qt.cleanDivision && qt.remainderDegree >= 0);
+    check(`quotient tamper: deg Q explodes past the honest bound N=${N}`, qt.quotientDegree > qt.cleanQuotientBound, `degQ=${qt.quotientDegree} bound=${qt.cleanQuotientBound}`);
+  }
+
+  // --- Threaded FRI: the SAME tampered trace fails to collapse under real FRI. ---
+  for (const N of [8, 16]) {
+    const fh = await friFromTrace(N);
+    check(`friFromTrace honest collapses to constant N=${N}`, fh.finalConstant && !fh.tampered);
+    const ft = await friFromTrace(N, Math.floor(N / 2));
+    check(`friFromTrace tampered trace does NOT collapse N=${N}`, !ft.finalConstant && ft.tampered);
+  }
+
+  // --- One masked opening: secret fixed, received value varies with fresh r. ---
+  const m1 = maskedOpeningSample(16, 5);
+  const m2 = maskedOpeningSample(16, 5);
+  check('masked opening: secret f(x) is stable across draws', m1.secret === m2.secret);
+  check('masked opening: received value differs across draws', m1.masked !== m2.masked);
+  check('masked opening: masked value is not the secret', m1.masked !== m1.secret && m2.masked !== m2.secret);
 
   // --- Degree adjustment is active: honest deg(CP) is lifted to N-1 (not N-2). ---
   const adj = await prove(16);

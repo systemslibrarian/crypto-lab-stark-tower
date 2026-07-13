@@ -158,6 +158,7 @@
       <nav class="toc" aria-label="Exhibits">
         <a href="#exhibit-1">01 · Orientation</a>
         <a href="#exhibit-2">02 · AIR</a>
+        <a href="#exhibit-q">02·5 · Quotient</a>
         <a href="#exhibit-3">03 · FRI</a>
         <a href="#exhibit-4">04 · Proof size</a>
         <a href="#exhibit-5">05 · Prove &amp; verify</a>
@@ -239,6 +240,44 @@
         <div class="vl"><strong>Why this matters:</strong> AIR is the compilation target for StarkNet Cairo, Miden VM, and Risc Zero zkVM execution traces. Try <em>Tamper a row</em> and watch a residual become nonzero — that single broken constraint is what the rest of the protocol amplifies into a rejection.</div>
       </section>
 
+      <section class="exhibit" id="exhibit-q" aria-labelledby="exq-title">
+        <div class="ex-row"><span class="ex-num">EXHIBIT 02·5</span><span class="badge badge-real">The missing middle step</span></div>
+        <h2 class="ex-title" id="exq-title">From “constraint broken” to “degree too high”</h2>
+        <div class="trust-banner trust-conceptual"><strong>Real polynomial division:</strong> this takes the <em>same</em> trace from Exhibit&nbsp;02, builds the constraint polynomial <code>C(x)</code>, and divides it by the vanishing polynomial <code>Z(x)</code> with exact field arithmetic — no faked numbers. The one thing to watch: whether that division comes out clean.</div>
+        <div class="prose">
+          <p>Here is the step every STARK explainer skips. Exhibit&nbsp;02 showed a broken constraint as a nonzero residual. But FRI does not test residuals — it tests <em>degree</em>. This panel is the converter between the two.</p>
+          <p>The transition rule <code>t[i+2] = t[i+1] + t[i]</code> becomes a polynomial <span class="term" tabindex="0"><span class="term-word">C(x)</span><span class="term-def">The constraint polynomial: <code>C(x) = f(w²x) − f(wx) − f(x)</code>. It is zero at every trace step where the rule holds.</span></span> that must be zero at every step. So <code>C</code> should be divisible by the <span class="term" tabindex="0"><span class="term-word">vanishing polynomial</span><span class="term-def"><code>Z(x)</code> is zero at exactly the trace steps the rule covers. If <code>C</code> is zero there too, <code>Z</code> divides <code>C</code> with no remainder.</span></span> <code>Z(x)</code> that is zero at exactly those steps. The prover commits to the <span class="term" tabindex="0"><span class="term-word">quotient</span><span class="term-def"><code>Q(x) = C(x) / Z(x)</code>. It is a genuine low-degree polynomial only when the division is clean — i.e. only when every constraint held.</span></span> <code>Q(x) = C(x) / Z(x)</code>. Watch what the division does:</p>
+        </div>
+        <div class="demo-grid">
+          <div class="panel">
+            <div class="ph">Divide the same trace</div>
+            <div class="pb">
+              <label for="q-n">Trace length (power of two)</label>
+              <select id="q-n" class="num-input">
+                <option value="8">8</option>
+                <option value="16" selected>16</option>
+              </select>
+              <div class="controls">
+                <button class="bp" id="q-honest">Use honest trace</button>
+                <button class="bd" id="q-tamper">Tamper the same row</button>
+              </div>
+              <div id="q-status" class="hash-label" role="status" aria-live="polite">Ready.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph">The one number that decides everything</div>
+            <div class="pb">
+              <div class="q-flow" id="q-flow"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">C(x) ÷ Z(x), step by step</div>
+          <div class="pb"><pre id="q-detail" class="log" tabindex="0" role="region" aria-label="Constraint quotient division detail"></pre></div>
+        </div>
+        <div class="vl"><strong>Why this matters:</strong> <span id="q-why">…</span> A clean division keeps <code>Q</code> low degree; a nonzero remainder forces <code>Q</code>’s degree up to nearly the domain size. That degree explosion is <em>exactly</em> the signal the next exhibit’s FRI test rejects — so a broken constraint and a failed low-degree test are the same event, seen twice.</div>
+      </section>
+
       <section class="exhibit" id="exhibit-3" aria-labelledby="ex3-title">
         <div class="ex-row"><span class="ex-num">EXHIBIT 03</span><span class="badge badge-real">FRI Low-Degree Test</span></div>
         <h2 class="ex-title" id="ex3-title">Step 2 — FRI: The Heart of STARKs</h2>
@@ -250,16 +289,31 @@
           <div class="panel">
             <div class="ph">FRI controls</div>
             <div class="pb">
-              <label for="fri-degree">Polynomial degree</label>
-              <select id="fri-degree" class="num-input">
-                <option value="4">4</option>
-                <option value="8" selected>8</option>
-                <option value="16">16</option>
-              </select>
+              <fieldset class="fri-source">
+                <legend>What to fold</legend>
+                <label class="radioline"><input type="radio" name="fri-source" id="fri-src-trace" value="trace" checked /> The quotient <code>Q</code> from Exhibit 02·5 (same Fibonacci trace)</label>
+                <label class="radioline"><input type="radio" name="fri-source" id="fri-src-abstract" value="abstract" /> An abstract polynomial (pick a degree)</label>
+              </fieldset>
+              <div id="fri-trace-controls">
+                <label for="fri-n">Trace length (power of two)</label>
+                <select id="fri-n" class="num-input">
+                  <option value="8">8</option>
+                  <option value="16" selected>16</option>
+                </select>
+                <label class="checkline"><input type="checkbox" id="fri-trace-tamper" /> Tamper the trace (the same cheat as Exhibit 02)</label>
+              </div>
+              <div id="fri-abstract-controls" hidden>
+                <label for="fri-degree">Polynomial degree</label>
+                <select id="fri-degree" class="num-input">
+                  <option value="4">4</option>
+                  <option value="8" selected>8</option>
+                  <option value="16">16</option>
+                </select>
+                <label class="checkline"><input type="checkbox" id="fri-tamper" /> Inject a high-degree term (simulate a cheat)</label>
+              </div>
               <div class="controls">
                 <button class="bp" id="fri-run">Run FRI</button>
               </div>
-              <label class="checkline"><input type="checkbox" id="fri-tamper" /> Inject a high-degree term (simulate a cheat)</label>
               <div id="fri-status" class="hash-label" role="status" aria-live="polite">Ready.</div>
             </div>
           </div>
@@ -279,7 +333,11 @@
           <div class="ph">Folding, visualized</div>
           <div class="pb">
             <div id="fri-viz" role="img" aria-label="Diagram of FRI domain halving across folding rounds"></div>
-            <p class="hint">Each row is one FRI layer. Every fold pairs a point with its negative (<code>x</code> and <code>−x</code>) and maps them through <code>x²</code> to a single point one row down — halving both the domain and the degree until only a constant remains.</p>
+            <ol class="fri-guide">
+              <li><span class="fri-guide-key" aria-hidden="true">1</span> The top row is the full evaluation domain — one dot per point where the polynomial was committed.</li>
+              <li><span class="fri-guide-key" aria-hidden="true">2</span> Each fold pairs a point with its negative (<code>x</code> and <code>−x</code>, the two parents of one child) and combines them through <code>x²</code> into a single point one row down.</li>
+              <li><span class="fri-guide-key" aria-hidden="true">3</span> That halves both the domain and the degree. After enough folds only the bottom row is left: one dot. If it is a single <strong class="fri-guide-ok">constant (green)</strong>, FRI accepts; if the dots differ (<strong class="fri-guide-bad">red</strong>), it rejects.</li>
+            </ol>
           </div>
         </div>
         <div id="fri-verdict" class="verdict" role="status"></div>
@@ -314,8 +372,10 @@
             </div>
             <div class="sec-grid">
               <div class="sec-stat"><span class="sec-num" id="sec-bits">96</span><span class="sec-cap">≈ security bits</span></div>
+              <div class="sec-stat"><span class="sec-num" id="sec-cheat">—</span><span class="sec-cap">a liar slips through</span></div>
               <div class="sec-stat"><span class="sec-num" id="sec-bytes">—</span><span class="sec-cap">≈ FRI query bytes</span></div>
             </div>
+            <p id="sec-example" class="hint"></p>
             <p id="sec-note" class="hint" role="status" aria-live="polite"></p>
           </div>
         </div>
@@ -377,12 +437,23 @@
             <p>Below we draw many masked openings of the <em>same</em> point with fresh randomness and compare them to a witness-free simulator that just emits uniform field elements. If masking works, the two distributions are indistinguishable and the true value never stands out.</p>
           </div>
           <div class="panel">
-            <div class="ph">Masked openings of one point vs. a witness-free simulator</div>
+            <div class="ph">Step 1 — watch one masked opening change</div>
             <div class="pb">
+              <p class="hint">The verifier opens the trace polynomial at a fixed point. Click repeatedly: the <em>secret</em> value <code>f(x)</code> never changes, but the value the verifier actually receives is different every single time — fresh randomness blinds it.</p>
+              <div class="controls"><button class="bp" id="zk-one">Reveal one masked opening</button></div>
+              <div id="zk-one-viz" class="zk-one-viz"></div>
+              <p id="zk-one-note" class="hint" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="ph">Step 2 — the accumulated distribution vs. a witness-free simulator</div>
+            <div class="pb">
+              <p class="hint">Now draw many masked openings of that same point and pile them into a histogram. Overlay a simulator that knows <em>no secret at all</em> and just emits uniform noise. If masking works, the two shapes are indistinguishable.</p>
               <div class="controls"><button class="bp" id="zk-run">Run masking experiment</button></div>
               <div id="zk-viz"></div>
               <div id="zk-stats" class="sec-grid"></div>
               <p id="zk-note" class="hint" role="status" aria-live="polite"></p>
+              <p class="zk-punchline">Because the masked value looks like uniform noise no matter what the secret was, the secret cannot be read off it. That “the two distributions match” <em>is</em> the hiding property.</p>
             </div>
           </div>
           <div class="callout">

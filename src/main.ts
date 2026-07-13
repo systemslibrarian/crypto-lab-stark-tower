@@ -4,10 +4,13 @@ import {
   prove,
   verify,
   airAnalysis,
+  quotientAnalysis,
   friDemo,
+  friFromTrace,
   proofStats,
   securityBits,
   zkOpeningExperiment,
+  maskedOpeningSample,
   type StarkProof,
   type VerifyResult,
   type FriLayerInfo,
@@ -21,6 +24,25 @@ function $(id: string): HTMLElement | null {
 function setText(id: string, text: string): void {
   const el = $(id);
   if (el) el.textContent = text;
+}
+
+// Human-readable 1-in-N odds: use short-scale names up to quintillions, then
+// fall back to scientific notation for astronomically small cheat chances.
+function formatOneIn(n: number): string {
+  if (!isFinite(n)) return '∞';
+  const units: [number, string][] = [
+    [1e18, ' quintillion'],
+    [1e15, ' quadrillion'],
+    [1e12, ' trillion'],
+    [1e9, ' billion'],
+    [1e6, ' million'],
+    [1e3, ' thousand'],
+  ];
+  if (n >= 1e21) return n.toExponential(1).replace('e+', ' × 10^');
+  for (const [scale, name] of units) {
+    if (n >= scale) return `${(n / scale).toFixed(n / scale >= 100 ? 0 : 1)}${name}`;
+  }
+  return `${Math.round(n)}`;
 }
 
 // --------------------------------------------------------------------------
@@ -136,6 +158,92 @@ function bindExhibit2(): void {
   render();
 }
 
+// --------------------------------------------------------------------------
+// Exhibit 2·5 — the constraint quotient (the missing middle step)
+// --------------------------------------------------------------------------
+function bindQuotient(): void {
+  const nSel = $('q-n') as HTMLSelectElement | null;
+  let tampered = false;
+
+  function render(): void {
+    const n = Number(nSel?.value ?? 16);
+    const tamperRow = tampered ? Math.floor(n / 2) : -1;
+    const q = quotientAnalysis(n, tamperRow);
+
+    // The one decisive number, shown as an explicit before/after flow.
+    const flow = $('q-flow');
+    if (flow) {
+      const remCell = q.cleanDivision
+        ? '<span class="q-chip q-chip-ok">remainder = 0 (clean)</span>'
+        : `<span class="q-chip q-chip-bad">remainder ≠ 0 (deg ${q.remainderDegree})</span>`;
+      const degCell = q.cleanDivision
+        ? `<span class="q-chip q-chip-ok">deg Q = ${q.quotientDegree}</span>`
+        : `<span class="q-chip q-chip-bad">deg Q = ${q.quotientDegree}</span>`;
+      flow.innerHTML =
+        `<div class="q-step"><span class="q-step-label">constraint C(x)</span><span class="q-step-val">degree ${q.constraintDegree}</span></div>` +
+        `<div class="q-arrow" aria-hidden="true">÷ Z(x) →</div>` +
+        `<div class="q-step"><span class="q-step-label">does Z divide C?</span><span class="q-step-val">${remCell}</span></div>` +
+        `<div class="q-arrow" aria-hidden="true">→</div>` +
+        `<div class="q-step"><span class="q-step-label">quotient Q(x)</span><span class="q-step-val">${degCell}</span></div>` +
+        `<div class="q-verdict ${q.cleanDivision ? 'q-verdict-ok' : 'q-verdict-bad'}">` +
+        (q.cleanDivision
+          ? `✓ LOW DEGREE — Q stays at or below the honest bound (${q.cleanQuotientBound}). FRI will accept.`
+          : `✗ HIGH DEGREE — Q jumps to ${q.quotientDegree}, near the domain size. FRI will reject.`) +
+        `</div>`;
+    }
+
+    // Division detail, honest math on screen.
+    const detail = $('q-detail');
+    if (detail) {
+      const sample = q.samplePoints
+        .map((s, i) => `  x${i} :  C(x)=${trunc12(s.c)}   Z(x)=${trunc12(s.z)}   Q=C/Z=${trunc12(s.q)}`)
+        .join('\n');
+      const lines = [
+        `C(x) = f(w²x) − f(wx) − f(x)        deg C = ${q.constraintDegree}`,
+        `Z(x) = vanishing on the ${q.n - 2} transition steps   deg Z = ${q.vanishDegree}`,
+        '',
+        q.cleanDivision
+          ? `C ÷ Z  →  remainder is the ZERO polynomial. Z divides C exactly.`
+          : `C ÷ Z  →  remainder is NONZERO (degree ${q.remainderDegree}). Z does NOT divide C.`,
+        '',
+        q.cleanDivision
+          ? `So Q = C/Z is an honest polynomial of degree ${q.quotientDegree} (≤ ${q.cleanQuotientBound}).`
+          : `So Q = C/Z is no longer a low-degree polynomial: interpolating its`,
+        q.cleanDivision ? '' : `values over the domain gives degree ${q.quotientDegree} — the degree explosion FRI detects.`,
+        '',
+        'Sampled off the transition domain (where Z ≠ 0):',
+        sample,
+      ].filter((l) => l !== undefined);
+      detail.textContent = lines.join('\n');
+    }
+
+    setText(
+      'q-status',
+      q.cleanDivision
+        ? `Honest trace: Z(x) divides C(x) cleanly, so the quotient Q has degree ${q.quotientDegree}.`
+        : `Tampered trace: Z(x) does NOT divide C(x) (remainder degree ${q.remainderDegree}), so Q's degree explodes to ${q.quotientDegree}.`,
+    );
+    const s = $('q-status');
+    if (s) s.className = `hash-label ${q.cleanDivision ? 'status-ok' : 'status-bad'}`;
+
+    setText(
+      'q-why',
+      q.cleanDivision
+        ? 'A valid trace makes the constraint vanish on every step, so the division is clean and the quotient is low degree.'
+        : 'One broken step leaves a nonzero remainder, and the leftover cannot be a low-degree polynomial.',
+    );
+  }
+
+  nSel?.addEventListener('change', render);
+  $('q-honest')?.addEventListener('click', () => { tampered = false; render(); });
+  $('q-tamper')?.addEventListener('click', () => { tampered = true; render(); });
+  render();
+}
+
+function trunc12(v: string): string {
+  return v.length > 12 ? v.slice(0, 12) + '…' : v;
+}
+
 function renderFriViz(target: HTMLElement, layers: FriLayerInfo[], finalConstant: boolean): void {
   const W = 640;
   const margin = 30;
@@ -175,12 +283,32 @@ function renderFriViz(target: HTMLElement, layers: FriLayerInfo[], finalConstant
 function bindExhibit3(): void {
   const degSel = $('fri-degree') as HTMLSelectElement | null;
   const tamperBox = $('fri-tamper') as HTMLInputElement | null;
+  const nSel = $('fri-n') as HTMLSelectElement | null;
+  const traceTamperBox = $('fri-trace-tamper') as HTMLInputElement | null;
+  const srcTrace = $('fri-src-trace') as HTMLInputElement | null;
+  const traceControls = $('fri-trace-controls');
+  const abstractControls = $('fri-abstract-controls');
+
+  function syncSource(): void {
+    const useTrace = srcTrace?.checked ?? true;
+    if (traceControls) traceControls.hidden = !useTrace;
+    if (abstractControls) abstractControls.hidden = useTrace;
+  }
 
   async function run(): Promise<void> {
-    const degree = Number(degSel?.value ?? 8);
-    const tamper = tamperBox?.checked ?? false;
+    const useTrace = srcTrace?.checked ?? true;
     setText('fri-status', 'Folding…');
-    const r = await friDemo(degree, { tamper });
+    let r;
+    let tamper: boolean;
+    if (useTrace) {
+      const n = Number(nSel?.value ?? 16);
+      tamper = traceTamperBox?.checked ?? false;
+      r = await friFromTrace(n, tamper ? Math.floor(n / 2) : -1);
+    } else {
+      const degree = Number(degSel?.value ?? 8);
+      tamper = tamperBox?.checked ?? false;
+      r = await friDemo(degree, { tamper });
+    }
 
     const table = $('fri-table');
     if (table) {
@@ -208,12 +336,26 @@ function bindExhibit3(): void {
         ? `✓ LOW DEGREE — the final layer collapsed to the single constant ${r.finalValues[0]}. FRI accepts.`
         : '✗ NOT LOW DEGREE — the final layer is not constant, so FRI rejects. This is exactly how a tampered trace gets caught.';
     }
-    setText('fri-status', tamper ? 'Folded a deliberately high-degree polynomial.' : `Folded a degree-${degree} polynomial down to a constant.`);
+    setText(
+      'fri-status',
+      useTrace
+        ? tamper
+          ? 'Folded the quotient Q from the TAMPERED trace — it did not collapse to a constant. Same object as Exhibit 02, caught here.'
+          : 'Folded the quotient Q from the honest trace down to a constant. Same object as Exhibit 02·5.'
+        : tamper
+          ? 'Folded a deliberately high-degree abstract polynomial.'
+          : 'Folded a low-degree abstract polynomial down to a constant.',
+    );
   }
 
   degSel?.addEventListener('change', () => void run());
   tamperBox?.addEventListener('change', () => void run());
+  nSel?.addEventListener('change', () => void run());
+  traceTamperBox?.addEventListener('change', () => void run());
+  srcTrace?.addEventListener('change', () => { syncSource(); void run(); });
+  $('fri-src-abstract')?.addEventListener('change', () => { syncSource(); void run(); });
   $('fri-run')?.addEventListener('click', () => void run());
+  syncSource();
   void run();
 }
 
@@ -287,13 +429,24 @@ function bindSecurityCalc(): void {
     const pathLen = 10 + rateLog;
     const bytes = queries * folds * 2 * pathLen * 32;
 
+    // A cheating prover's per-proof success probability is ≈ rate^queries =
+    // (1/blowup)^queries = 2^(−bits). Render it as human-readable 1-in-N odds.
+    const oneInN = Math.pow(blowup, queries); // = 2^bits
+    const cheatOdds = formatOneIn(oneInN);
+
     setText('sec-blowup-val', `${blowup}`);
     setText('sec-queries-val', `${queries}`);
     setText('sec-bits', `${bits}`);
+    setText('sec-cheat', `1 in ${cheatOdds}`);
     setText('sec-bytes', `${(bytes / 1024).toFixed(1)} KB`);
+    // Fixed worked example so the odds feel concrete.
+    setText(
+      'sec-example',
+      `Worked example: with blowup 8 and 8 queries, a liar slips through about 1 in ${formatOneIn(Math.pow(8, 8))} times (each of the 8 queries independently has a 1-in-8 chance of landing where the cheat is invisible).`,
+    );
     setText(
       'sec-note',
-      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path.`,
+      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path.`,
     );
     const bitsEl = $('sec-bits');
     if (bitsEl) bitsEl.className = `sec-num ${bits >= 100 ? 'status-ok' : bits < 80 ? 'status-bad' : ''}`;
@@ -430,6 +583,39 @@ function renderZkHistogram(target: HTMLElement, exp: ZkExperiment): void {
     `<div class="zk-hist" role="img" aria-label="Histogram comparing masked openings to a witness-free simulator across field-value buckets">${cols}</div>`;
 }
 
+function bindZkOneOpening(): void {
+  let clicks = 0;
+  let secret: string | null = null;
+  const history: string[] = [];
+
+  function reveal(): void {
+    const s = maskedOpeningSample(16, 5);
+    clicks += 1;
+    secret = s.secret;
+    history.unshift(s.masked);
+    if (history.length > 6) history.pop();
+    const viz = $('zk-one-viz');
+    if (viz) {
+      const rows = history
+        .map((m, i) => `<div class="zk-one-row${i === 0 ? ' zk-one-latest' : ''}"><span class="zk-one-tag">click ${clicks - i}</span><span class="zk-one-num">${trunc12(m)}</span></div>`)
+        .join('');
+      viz.innerHTML =
+        `<div class="zk-one-secret"><span class="zk-one-tag">secret f(x)</span><span class="zk-one-num">${trunc12(secret)}</span><span class="zk-one-fixed">unchanged</span></div>` +
+        `<div class="zk-one-label">value the verifier receives (masked):</div>` +
+        rows;
+    }
+    setText(
+      'zk-one-note',
+      clicks < 2
+        ? 'Click again — the secret f(x) stays fixed, but watch the received value change.'
+        : `${clicks} openings so far: the secret f(x) never moved, yet the verifier saw a different masked value every time.`,
+    );
+  }
+
+  $('zk-one')?.addEventListener('click', reveal);
+  reveal();
+}
+
 function bindZk(): void {
   async function run(): Promise<void> {
     setText('zk-note', 'Drawing masked openings with fresh randomness…');
@@ -458,10 +644,12 @@ function bindZk(): void {
 function init(): void {
   initThemeToggle();
   bindExhibit2();
+  bindQuotient();
   bindExhibit3();
   void bindExhibit4();
   bindSecurityCalc();
   bindExhibit5();
+  bindZkOneOpening();
   bindZk();
 }
 

@@ -4,7 +4,7 @@
 
 STARK Tower is an **honest, working** browser demonstration of zk-STARKs (Scalable Transparent ARguments of Knowledge; Ben-Sasson et al., 2018) — the post-quantum alternative to pairing-based SNARKs. STARKs require no trusted setup (the only cryptographic assumption is a collision-resistant hash), scale quasi-linearly, and are conjectured secure against quantum adversaries. They express computation as an Arithmetic Intermediate Representation (AIR) of polynomial constraints and use FRI (Fast Reed–Solomon IOP) as a transparent low-degree test. The cost is larger proofs (~45–200 KB vs 128 bytes for Groth16).
 
-What makes this demo different from a hand-wave: **the verifier really catches a cheating prover, and it does so without re-running the computation.** It only checks Merkle openings and a FRI low-degree test. Tamper with one trace cell and the constraint quotient stops being a polynomial, its low-degree extension is no longer low degree, and FRI rejects.
+What makes this demo different from a hand-wave: **the verifier really catches a cheating prover, and it does so without re-running the computation.** It only checks Merkle openings and a FRI low-degree test. Tamper with one trace cell and the constraint quotient stops being a polynomial, its low-degree extension is no longer low degree, and FRI rejects. A dedicated **quotient exhibit** makes that pivotal step visible: it takes the same tampered trace, divides the constraint polynomial `C(x)` by the vanishing polynomial `Z(x)` with exact field arithmetic, and shows the division stop being clean — the exact moment "constraint violated" becomes "degree too high" — and the FRI exhibit then folds that very same quotient so one artifact flows through the whole argument.
 
 ## When to Use It
 
@@ -22,7 +22,7 @@ What makes this demo different from a hand-wave: **the verifier really catches a
 
 **[systemslibrarian.github.io/crypto-lab-stark-tower](https://systemslibrarian.github.io/crypto-lab-stark-tower/)**
 
-The demo presents six exhibits: an orientation comparing STARKs and SNARKs; an interactive AIR exhibit with a single-column Fibonacci trace where tampering a row makes a residual nonzero; a real FRI exhibit with even/odd coset folding and per-layer SHA-256 Merkle roots plus an SVG of the domain halving; a proof-size benchmark with a live security ↔ size ↔ speed calculator; a full prove-and-verify exhibit where corrupting the trace is caught by the FRI low-degree test with no recomputation (plus a zero-knowledge masking mode); and a production survey. Generate a proof, verify it, then corrupt the trace and watch the verifier reject it without ever re-running the computation.
+The demo presents an orientation comparing STARKs and SNARKs; an interactive AIR exhibit with a single-column Fibonacci trace where tampering a row makes a residual nonzero; a **quotient exhibit** that divides `C(x)` by `Z(x)` on that same trace to show a clean division (honest) turn into a nonzero remainder and a degree explosion (tampered); a real FRI exhibit with even/odd coset folding and per-layer SHA-256 Merkle roots plus an SVG of the domain halving, which can fold either that same trace's quotient or an abstract polynomial; a proof-size benchmark with a live security ↔ size ↔ speed calculator (including a cheating-prover success-probability readout); a full prove-and-verify exhibit where corrupting the trace is caught by the FRI low-degree test with no recomputation (plus a zero-knowledge masking mode); and a production survey. Generate a proof, verify it, then corrupt the trace and watch the verifier reject it without ever re-running the computation.
 
 ## What Can Go Wrong
 
@@ -60,22 +60,23 @@ npm run dev
 
 Arithmetic is over `p = 3·2^30 + 1 = 3221225473`, the field from StarkWare's STARK-101 tutorial. This is deliberate: a Mersenne prime like `2^31 − 1` has 2-adicity 1 (no power-of-two subgroup), so you *cannot* build honest NTT-style evaluation domains or real FRI folding in it. `3·2^30 + 1` has `2^30 | (p − 1)`, giving the 2-adic structure a faithful STARK needs.
 
-## The Six Exhibits
+## The Exhibits
 
 1. **Orientation** — STARK vs SNARK comparison table (setup, assumptions, post-quantum posture, size).
 2. **AIR** — interactive single-column Fibonacci trace; check constraints; tamper a row and watch a residual become nonzero.
-3. **FRI** — real even/odd coset folding (`f(x), f(−x) → f′(x²)`) with SHA-256 Merkle roots per layer, plus an **SVG visualization** of the domain halving to a constant; a low-degree polynomial collapses, a high-degree one does not.
-4. **Proof size** — benchmark table, the demo's own toy proof size measured live, and an interactive **security ↔ size ↔ speed calculator** (blowup and query count → soundness bits).
-5. **Prove & verify** — the full protocol end-to-end. Generate a proof, verify it (per-check report), inspect a single query's decommitment, see a **succinctness summary** (how few values the verifier touched), then **Corrupt trace** and watch the *FRI low-degree test* reject it with no trace recomputation. Includes a **zero-knowledge mode** toggle plus a **masking experiment** that histograms masked openings against a witness-free simulator to show the witness stays hidden. A disclosure panel honestly states what a production STARK still adds.
+2·5. **Quotient (the missing middle step)** — takes the same trace, forms the constraint polynomial `C(x) = f(w²x) − f(wx) − f(x)`, and divides it by the vanishing polynomial `Z(x)` with exact field arithmetic. Honest ⇒ zero remainder and a low-degree quotient `Q`; tampered ⇒ nonzero remainder and `Q`'s degree explodes toward the domain size. This is the interactive converter from "constraint violated" to "not low degree" that FRI then rejects.
+3. **FRI** — real even/odd coset folding (`f(x), f(−x) → f′(x²)`) with SHA-256 Merkle roots per layer, plus an **SVG visualization** (with numbered guide captions) of the domain halving to a constant. By default it folds **the same trace's quotient `Q`** so one object flows from Exhibit 2·5 through the low-degree test; an abstract-polynomial mode is also available. A low-degree input collapses to a constant, a high-degree one does not.
+4. **Proof size** — benchmark table, the demo's own toy proof size measured live, and an interactive **security ↔ size ↔ speed calculator** (blowup and query count → soundness bits, plus a live "a liar slips through 1 in N" cheating-prover success probability).
+5. **Prove & verify** — the full protocol end-to-end. Generate a proof, verify it (per-check report), inspect a single query's decommitment, see a **succinctness summary** (how few values the verifier touched), then **Corrupt trace** and watch the *FRI low-degree test* reject it with no trace recomputation. Includes a **zero-knowledge mode** toggle plus a two-step **masking experiment**: first watch a single masked opening change on every click while the secret stays fixed, then accumulate a histogram of masked openings against a witness-free simulator to show the witness stays hidden. A disclosure panel honestly states what a production STARK still adds.
 6. **In production** — StarkNet, StarkEx, Risc Zero, Polygon Miden.
 
 ## Architecture
 
 | File | Responsibility |
 | --- | --- |
-| `src/field.ts` | `F_p` arithmetic, roots of unity, Lagrange interpolation, polynomial eval/degree |
+| `src/field.ts` | `F_p` arithmetic, roots of unity, Lagrange interpolation, polynomial eval/degree, exact polynomial division |
 | `src/merkle.ts` | SHA-256 Merkle commitments, openings, verification |
-| `src/stark.ts` | AIR, prover, verifier, real FRI; plus `airAnalysis` / `friDemo` for the exhibits |
+| `src/stark.ts` | AIR, prover, verifier, real FRI; plus `airAnalysis` / `quotientAnalysis` / `friDemo` / `friFromTrace` for the exhibits |
 | `src/main.ts` | DOM wiring only (no cryptography) |
 
 ### What is real vs simplified

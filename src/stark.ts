@@ -31,6 +31,7 @@ import {
   polyDegree,
   polyAdd,
   polyMul,
+  polyDivRem,
 } from './field';
 import {
   buildMerkle,
@@ -546,6 +547,98 @@ export function airAnalysis(n: number, tamperRow = -1): AirAnalysis {
   return { trace, transitions, boundaryOk: trace[0] === 1n && trace[1] === 1n, traceDegree };
 }
 
+export type QuotientAnalysis = {
+  n: number;
+  tampered: boolean;
+  tamperRow: number;
+  constraintDegree: number; // deg C(x), C(x)=f(w²x)-f(wx)-f(x)
+  vanishDegree: number; // deg Z_T(x) = N-2
+  quotientDegree: number; // deg of C/Z_T as an interpolated function over the domain
+  cleanDivision: boolean; // does Z_T divide C exactly? (remainder == 0)
+  remainderDegree: number; // deg of the polynomial remainder (-1 iff clean)
+  cleanQuotientBound: number; // the degree an honest quotient stays at or below (= N-2)
+  // A few sample points of the "quotient function" C(x)/Z_T(x) evaluated OFF the
+  // transition domain (where Z_T ≠ 0). For an honest trace these agree with the
+  // low-degree quotient polynomial; for a tamper they are the values whose
+  // interpolation blows the degree up.
+  samplePoints: { x: string; c: string; z: string; q: string }[];
+};
+
+// Exhibit 2·5 (the missing middle step): take the SAME (possibly tampered)
+// Fibonacci trace, form the transition constraint polynomial
+//   C(x) = f(w²x) − f(wx) − f(x)
+// and divide it by the transition vanishing polynomial Z_T(x). For an honest
+// trace C vanishes on the whole transition domain, so Z_T divides C exactly and
+// the quotient Q = C/Z_T is a genuine LOW-degree polynomial (deg ≤ N-2). For a
+// tampered trace a single constraint is nonzero, Z_T does NOT divide C, the
+// remainder is nonzero, and the quotient — as a function you must still commit
+// and low-degree-test — interpolates to degree ≈ the domain size. THIS is the
+// exact step where "a constraint is violated" becomes "the polynomial is not
+// low degree", which is what FRI then rejects. Everything is real field
+// arithmetic and real polynomial division; nothing is faked.
+export function quotientAnalysis(n: number, tamperRow = -1): QuotientAnalysis {
+  const N = n;
+  const w = rootOfUnity(N);
+  const trace = buildFibonacciTrace(N, tamperRow);
+  const domain: bigint[] = [];
+  for (let i = 0; i < N; i += 1) domain.push(pow(w, BigInt(i)));
+  const f = interpolate(domain, trace);
+
+  // C(x) = f(w²x) − f(wx) − f(x) as an exact coefficient polynomial. Composing
+  // f with the scalar maps x↦wx, x↦w²x is just scaling coefficient k by wᵏ.
+  const fwx = f.map((c, k) => mul(c, pow(w, BigInt(k))));
+  const fw2x = f.map((c, k) => mul(c, pow(w, BigInt(2 * k))));
+  const cPoly = polyAdd(polyAdd(fw2x, fwx.map((c) => sub(0n, c))), f.map((c) => sub(0n, c)));
+
+  // Z_T(x) = (xᴺ − 1) / ((x − wᴺ⁻²)(x − wᴺ⁻¹)) — vanishes on every transition
+  // row (D minus the last two, which have no successor pair).
+  let zNum = new Array<bigint>(N + 1).fill(0n);
+  zNum[0] = sub(0n, 1n);
+  zNum[N] = 1n; // xᴺ − 1
+  const factor1 = [sub(0n, pow(w, BigInt(N - 2))), 1n]; // (x − wᴺ⁻²)
+  const factor2 = [sub(0n, pow(w, BigInt(N - 1))), 1n]; // (x − wᴺ⁻¹)
+  const zDenom = polyMul(factor1, factor2);
+  const zt = polyDivRem(zNum, zDenom).quotient;
+
+  // Exact polynomial division C / Z_T.
+  const { quotient, remainder } = polyDivRem(cPoly, zt);
+  const remainderDegree = polyDegree(remainder);
+  const cleanDivision = remainderDegree < 0;
+
+  // The verifier does not get to divide symbolically; it only ever sees the
+  // quotient as EVALUATIONS it must low-degree-test. Reconstruct that function
+  // by evaluating C(x)/Z_T(x) at N points OFF the transition domain (an offset
+  // coset, where Z_T ≠ 0) and interpolating. Honest ⇒ low degree; tamper ⇒ the
+  // interpolant's degree blows up toward N-1, which is what FRI catches.
+  const off = GENERATOR;
+  const cosetPts: bigint[] = [];
+  const cosetVals: bigint[] = [];
+  const samplePoints: { x: string; c: string; z: string; q: string }[] = [];
+  for (let i = 0; i < N; i += 1) {
+    const x = mul(off, pow(w, BigInt(i)));
+    const cAt = polyEval(cPoly, x);
+    const zAt = polyEval(zt, x);
+    const qAt = div(cAt, zAt);
+    cosetPts.push(x);
+    cosetVals.push(qAt);
+    if (i < 4) samplePoints.push({ x: x.toString(), c: cAt.toString(), z: zAt.toString(), q: qAt.toString() });
+  }
+  const quotientFnDegree = polyDegree(interpolate(cosetPts, cosetVals));
+
+  return {
+    n: N,
+    tampered: tamperRow >= 0,
+    tamperRow,
+    constraintDegree: polyDegree(cPoly),
+    vanishDegree: polyDegree(zt),
+    quotientDegree: cleanDivision ? polyDegree(quotient) : quotientFnDegree,
+    cleanDivision,
+    remainderDegree,
+    cleanQuotientBound: N - 2,
+    samplePoints,
+  };
+}
+
 export type FriLayerInfo = { size: number; rootHex: string; beta?: string; degree: number };
 export type FriDemoResult = {
   domainSize: number;
@@ -557,23 +650,15 @@ export type FriDemoResult = {
   lowDegree: boolean; // verdict: did FRI accept?
 };
 
-// Exhibit 3: run real even/odd FRI folding on a chosen polynomial. With
-// `tamper`, inject a high-degree term so the final layer fails to collapse —
-// the same mechanism that catches a cheating prover in the full protocol.
-export async function friDemo(degree: number, options: { tamper?: boolean } = {}): Promise<FriDemoResult> {
-  const tamper = options.tamper ?? false;
-  const domainSize = nextPow2(degree + 1) * BLOWUP;
-  const off = GENERATOR;
-  const v = rootOfUnity(domainSize);
-
-  const coeffs = new Array<bigint>(domainSize).fill(0n);
-  for (let i = 0; i <= degree; i += 1) coeffs[i] = BigInt(i + 1);
-  if (tamper) coeffs[domainSize / 2] = 7n; // a term FRI cannot fold away
-
-  let layer: bigint[] = new Array(domainSize);
-  for (let j = 0; j < domainSize; j += 1) layer[j] = polyEval(coeffs, mul(off, pow(v, BigInt(j))));
-
+// Shared real FRI commit phase: fold `initialLayer` (evaluations of some
+// polynomial over an offset coset of size `domainSize`) down toward a constant,
+// committing every layer with a real Merkle root and deriving every folding
+// challenge with Fiat-Shamir. Used both by the abstract-polynomial demo and by
+// the trace-threaded demo so they exercise IDENTICAL folding code.
+async function foldLayers(initialLayer: bigint[], off: bigint): Promise<FriDemoResult> {
+  const domainSize = initialLayer.length;
   const numFolds = Math.round(Math.log2(domainSize / BLOWUP));
+  let layer = initialLayer;
   const layers: FriLayerInfo[] = [];
   const roots: string[] = [];
 
@@ -615,6 +700,65 @@ export async function friDemo(degree: number, options: { tamper?: boolean } = {}
     proofBytesEstimate,
     lowDegree: finalConstant,
   };
+}
+
+// Exhibit 3: run real even/odd FRI folding on a chosen polynomial. With
+// `tamper`, inject a high-degree term so the final layer fails to collapse —
+// the same mechanism that catches a cheating prover in the full protocol.
+export async function friDemo(degree: number, options: { tamper?: boolean } = {}): Promise<FriDemoResult> {
+  const tamper = options.tamper ?? false;
+  const domainSize = nextPow2(degree + 1) * BLOWUP;
+  const off = GENERATOR;
+  const v = rootOfUnity(domainSize);
+
+  const coeffs = new Array<bigint>(domainSize).fill(0n);
+  for (let i = 0; i <= degree; i += 1) coeffs[i] = BigInt(i + 1);
+  if (tamper) coeffs[domainSize / 2] = 7n; // a term FRI cannot fold away
+
+  const layer: bigint[] = new Array(domainSize);
+  for (let j = 0; j < domainSize; j += 1) layer[j] = polyEval(coeffs, mul(off, pow(v, BigInt(j))));
+
+  return foldLayers(layer, off);
+}
+
+// Exhibit 3 (threaded): fold the SAME object Exhibit 2 tampered with. We take
+// the honest-or-tampered Fibonacci trace, form the transition constraint
+// quotient function Q(x) = C(x)/Z_T(x) — the exact artifact the quotient panel
+// just built — evaluate it on the LDE coset, and run the real FRI fold on it.
+// Honest ⇒ Q is low degree ⇒ folds to a constant ⇒ ACCEPT. Tampered ⇒ Z_T does
+// not divide C, Q is NOT low degree ⇒ the final layer is not constant ⇒ REJECT.
+// This is the whole AIR→FRI causal chain acting on one artifact, end to end.
+export async function friFromTrace(n: number, tamperRow = -1): Promise<FriDemoResult & { tampered: boolean }> {
+  const N = n;
+  const off = GENERATOR;
+  const w = rootOfUnity(N);
+  const trace = buildFibonacciTrace(N, tamperRow);
+  const domain: bigint[] = [];
+  for (let i = 0; i < N; i += 1) domain.push(pow(w, BigInt(i)));
+  const f = interpolate(domain, trace);
+
+  // Constraint polynomial C(x) = f(w²x) − f(wx) − f(x), exact coefficients.
+  const fwx = f.map((c, k) => mul(c, pow(w, BigInt(k))));
+  const fw2x = f.map((c, k) => mul(c, pow(w, BigInt(2 * k))));
+  const cPoly = polyAdd(polyAdd(fw2x, fwx.map((c) => sub(0n, c))), f.map((c) => sub(0n, c)));
+
+  // Transition vanishing polynomial Z_T(x).
+  const zNum = new Array<bigint>(N + 1).fill(0n);
+  zNum[0] = sub(0n, 1n);
+  zNum[N] = 1n;
+  const zt = polyDivRem(zNum, polyMul([sub(0n, pow(w, BigInt(N - 2))), 1n], [sub(0n, pow(w, BigInt(N - 1))), 1n])).quotient;
+
+  // Evaluate Q(x) = C(x)/Z_T(x) on an offset LDE coset (Z_T ≠ 0 there) and fold.
+  const domainSize = N * BLOWUP;
+  const v = rootOfUnity(domainSize);
+  const layer: bigint[] = new Array(domainSize);
+  for (let j = 0; j < domainSize; j += 1) {
+    const x = mul(off, pow(v, BigInt(j)));
+    layer[j] = div(polyEval(cPoly, x), polyEval(zt, x));
+  }
+
+  const result = await foldLayers(layer, off);
+  return { ...result, tampered: tamperRow >= 0 };
 }
 
 export type ProofStats = {
@@ -730,6 +874,37 @@ export function zkOpeningExperiment(n: number, position: number, trials: number,
     maxBucketGap,
     pairwiseCorrelation,
   };
+}
+
+// One masked opening of a fixed point, with fresh randomness each call. Returns
+// the (unchanging) secret f(x) and the (blinded) value the verifier actually
+// receives: f′(x) = f(x) + (xᴺ−1)·r(x). The point of drawing it live is to let a
+// learner SEE that the received value moves every click while the secret does
+// not — the mechanism the histogram then aggregates. Real field arithmetic.
+export function maskedOpeningSample(n: number, position: number): { secret: string; masked: string } {
+  const N = n;
+  const degreeBound = nextPow2(N + 3 * NUM_QUERIES);
+  const maskCoeffs = degreeBound - N;
+  const L = degreeBound * BLOWUP;
+  const off = GENERATOR;
+  const v = rootOfUnity(L);
+  const w = rootOfUnity(N);
+  const trace = buildFibonacciTrace(N);
+  const domain: bigint[] = [];
+  for (let i = 0; i < N; i += 1) domain.push(pow(w, BigInt(i)));
+  const fCoeffs = interpolate(domain, trace);
+  const x = mul(off, pow(v, BigInt(position % L)));
+  const secret = polyEval(fCoeffs, x);
+  const zdx = sub(pow(x, BigInt(N)), 1n);
+  const r = new Array<bigint>(maskCoeffs).fill(0n).map(() => randomField());
+  let rx = 0n;
+  let xp = 1n;
+  for (let k = 0; k < r.length; k += 1) {
+    rx = add(rx, mul(r[k], xp));
+    xp = mul(xp, x);
+  }
+  const masked = add(secret, mul(zdx, rx));
+  return { secret: secret.toString(), masked: masked.toString() };
 }
 
 // Quantify succinctness: how little of the witness the verifier actually sees.
