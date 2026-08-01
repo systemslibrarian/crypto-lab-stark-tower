@@ -274,7 +274,11 @@ function renderFriViz(target: HTMLElement, layers: FriLayerInfo[], finalConstant
       dots += `<circle cx="${cx(i, size).toFixed(1)}" cy="${y}" r="${r0}" class="${cls}"/>`;
     }
   }
-  target.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="fri-svg" preserveAspectRatio="xMidYMid meet">${lines}${dots}${labels}</svg>`;
+  const desc =
+    `FRI folding diagram: ${layers.length} layers, from ${layers[0].size} evaluation points down to ` +
+    `${layers[layers.length - 1].size}. The final layer is ` +
+    `${finalConstant ? 'constant, as an honest low-degree polynomial requires' : 'not constant, revealing a cheat'}.`;
+  target.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="fri-svg" preserveAspectRatio="xMidYMid meet" role="img"><title>${desc}</title>${lines}${dots}${labels}</svg>`;
 }
 
 // --------------------------------------------------------------------------
