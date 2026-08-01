@@ -16,7 +16,7 @@ What makes this demo different from a hand-wave: **the verifier really catches a
 - ❌ On-chain verification under tight gas limits — STARK verification is far more expensive than Groth16 (~50 ms vs ~1 ms)
 - ❌ When proof size is critical — 45–200 KB vs 128 bytes for Groth16
 - ❌ For small circuits where SNARK setup cost is acceptable — Groth16 is faster and smaller
-- ❌ As a production proving system — this is an honest but toy-parameter teaching demo (short traces, ~20-bit soundness, Lagrange instead of NTT), not an audited STARK library
+- ❌ As a production proving system — this is an honest but toy-parameter teaching demo (short traces, ~24-bit soundness under the conjectured FRI bound and only ~7-12 bits provably, Lagrange instead of NTT), not an audited STARK library
 
 ## Live Demo
 
@@ -28,7 +28,7 @@ The demo presents an orientation comparing STARKs and SNARKs; an interactive AIR
 
 - **Large proofs** — STARK proofs run ~45–200 KB versus 128 bytes for Groth16, a real cost wherever bandwidth or storage is tight.
 - **Expensive on-chain verification** — STARK verification is far costlier than Groth16 (~50 ms vs ~1 ms), so tight gas budgets can make it impractical.
-- **Soundness depends on parameters** — blowup factor and query count set the soundness bits; the demo's toy settings (blowup 8, 8 queries ≈ 20-bit) are far below production targets.
+- **Soundness depends on parameters** — blowup factor and query count set the soundness bits; the demo's toy settings (blowup 8, 8 queries) give 8 × log₂(8) = **24 bits**, which is what the app renders. That figure uses the standard `queries × log₂(blowup)` estimate, which assumes the *conjectured* list-decoding-to-capacity regime for FRI; under bounds that are actually proven (unique decoding, or the Johnson bound) the same parameters yield roughly **7-12 bits**. Either way, far below production targets.
 - **Field choice matters** — FRI needs a field with high 2-adicity (here `3·2³⁰+1`); a field like `2³¹−1` with 2-adicity 1 cannot support honest power-of-two evaluation domains or real folding.
 - **Toy simplifications** — short traces and Lagrange interpolation (instead of NTT) keep the demo legible but are not how a production STARK scales; the ZK property here is shown empirically, not via a full simulator proof.
 
@@ -82,7 +82,7 @@ Arithmetic is over `p = 3·2^30 + 1 = 3221225473`, the field from StarkWare's ST
 ### What is real vs simplified
 
 - **Real:** the field, polynomial interpolation, SHA-256 Merkle commitments, even/odd FRI folding, Fiat-Shamir challenges, query decommitments, the low-degree test that catches tampering, **per-constraint degree adjustment** (`αᵢ + βᵢ·x^(D−dᵢ)`), and an **optional zero-knowledge masking** mode (`f′ = f + (xᴺ−1)·r`) whose witness-hiding is demonstrated empirically.
-- **Simplified for clarity (clearly labeled in-app):** toy parameters (short traces, blowup 8, 8 queries ≈ 20-bit soundness) and Lagrange interpolation instead of NTT. The ZK property is shown empirically (revealed values independent of the witness), not via a full-transcript simulator proof. None of these change *how* a cheat is caught.
+- **Simplified for clarity (clearly labeled in-app):** toy parameters (short traces, blowup 8, 8 queries → 24 conjectured soundness bits, ~7-12 provable) and Lagrange interpolation instead of NTT. The ZK property is shown empirically (revealed values independent of the witness), not via a full-transcript simulator proof. None of these change *how* a cheat is caught.
 
 ## Testing
 

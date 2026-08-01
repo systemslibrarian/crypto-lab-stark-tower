@@ -930,6 +930,13 @@ export function proofStats(proof: StarkProof): ProofStats {
 // Toy soundness estimate. The dominant FRI query term is rate^(-queries), i.e.
 // each query contributes log2(blowup) bits. Real analyses add commit-phase and
 // proximity-gap terms; this is the headline figure used for teaching.
+//
+// It is also optimistic: rate^(-queries) is the CONJECTURED bound, which holds
+// if FRI achieves list decoding up to capacity. Under bounds that are actually
+// proven — the unique decoding radius (1-rate)/2, or the Johnson bound
+// 1-sqrt(rate) — each query is worth well under log2(blowup) bits. At
+// BLOWUP 8 / NUM_QUERIES 8 this returns 24 while the provable figure is roughly
+// 7-12. The UI renders both; do not quote the 24 without the caveat.
 export function securityBits(blowup: number, queries: number): number {
   return Math.round(queries * Math.log2(blowup));
 }

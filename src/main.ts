@@ -450,7 +450,7 @@ function bindSecurityCalc(): void {
     );
     setText(
       'sec-note',
-      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path.`,
+      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path. Caveat: queries × log₂(blowup) is the conjectured bound, assuming FRI achieves list decoding up to capacity. Provable bounds (unique decoding, or the Johnson bound) give well under half this — at blowup 8 with 8 queries, roughly 7–12 bits rather than 24.`,
     );
     const bitsEl = $('sec-bits');
     if (bitsEl) bitsEl.className = `sec-num ${bits >= 100 ? 'status-ok' : bits < 80 ? 'status-bad' : ''}`;
@@ -487,7 +487,11 @@ function bindExhibit5(): void {
       `<div class="sec-stat"><span class="sec-num">${s.proofBytes.toLocaleString()}</span><span class="sec-cap">proof bytes</span></div>` +
       `<div class="sec-stat"><span class="sec-num">${s.uniqueTracePointsOpened + s.friOpenings}</span><span class="sec-cap">committed values seen</span></div>` +
       `<div class="sec-stat"><span class="sec-num">~${s.estimatedSecurityBits}</span><span class="sec-cap">soundness bits (toy)</span></div>` +
-      `</div>`;
+      `</div>` +
+      `<p class="hint">That ${s.estimatedSecurityBits}-bit figure is <code>queries &times; log&#8322;(blowup)</code>, ` +
+      `the headline FRI estimate — and it assumes the <em>conjectured</em> list-decoding-to-capacity regime. ` +
+      `Under bounds that are actually proven (unique decoding, or the Johnson bound) the same parameters are ` +
+      `worth roughly 7&ndash;12 bits. Toy either way: production targets ~100.</p>`;
   }
 
   function renderInspector(p: StarkProof): void {
