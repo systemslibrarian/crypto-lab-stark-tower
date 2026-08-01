@@ -3,6 +3,7 @@
 // SYSTEM (low-degree test), not by recomputing the trace.
 import { prove, verify, airAnalysis, quotientAnalysis, friDemo, friFromTrace, zkOpeningExperiment, maskedOpeningSample } from '../src/stark';
 import { P, GENERATOR, rootOfUnity, pow, mul } from '../src/field';
+import { buildMerkle, openMerkle, verifyOpening } from '../src/merkle';
 
 let failures = 0;
 function check(name: string, cond: boolean, extra = '') {
@@ -117,6 +118,31 @@ async function main() {
   check('zk: every histogram bucket populated (no clustering)', exp.realHistogram.every((c) => c > 0));
   check('zk: real distribution ≈ witness-free simulator', exp.maxBucketGap < 0.05, `maxGap=${exp.maxBucketGap.toFixed(4)}`);
   check('zk: two positions are uncorrelated (independent)', exp.pairwiseCorrelation < 0.1, `|corr|=${exp.pairwiseCorrelation.toFixed(4)}`);
+
+  // --- Merkle openings must bind a POSITION IN A VECTOR OF KNOWN LENGTH. ---
+  // A k-hash path only consumes the low k bits of the index, so without an
+  // explicit domain-size argument a prover could commit a tiny tree and answer
+  // every position of a much larger claimed domain out of it (index 4, 12, 100
+  // … all re-derive the same root). These assert that hole stays closed.
+  {
+    const small = [11n, 22n, 33n, 44n, 55n, 66n, 77n, 88n];
+    const t8 = await buildMerkle(small);
+    const op4 = openMerkle(t8, 4);
+    check('merkle: genuine opening verifies against its true domain size', await verifyOpening(op4, t8.rootHex, 8));
+    check(
+      'merkle: index 12 forged from the index-4 path is REJECTED (12 ≡ 4 mod 8)',
+      !(await verifyOpening({ ...op4, index: 12 }, t8.rootHex, 8)),
+    );
+    check(
+      'merkle: a 3-hash path cannot answer a 128-leaf domain',
+      !(await verifyOpening({ ...op4, index: 100 }, t8.rootHex, 128)),
+    );
+    check('merkle: truncated path is REJECTED', !(await verifyOpening({ ...op4, path: op4.path.slice(0, 2) }, t8.rootHex, 8)));
+    check(
+      'merkle: non-canonical field encoding (v + P) is REJECTED',
+      !(await verifyOpening({ ...op4, value: (BigInt(op4.value) + P).toString() }, t8.rootHex, 8)),
+    );
+  }
 
   // --- Adversarial: mutate every field of an HONEST proof; each must reject. ---
   const honest = (await prove(16)).proof;

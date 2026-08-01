@@ -450,11 +450,13 @@ export async function verify(proof: StarkProof): Promise<VerifyResult> {
 
     // (a) Trace openings against the trace root, at x, w·x, w²·x.
     const idxOk = q.fx.index === g && q.fwx.index === (g + shift) % L && q.fw2x.index === (g + 2 * shift) % L;
+    // The trace was committed over the whole L-point LDE, so every opening must
+    // carry a full log2(L)-hash path and name a position inside [0, L).
     const traceMerkle =
       idxOk &&
-      (await verifyOpening(q.fx, proof.traceRoot)) &&
-      (await verifyOpening(q.fwx, proof.traceRoot)) &&
-      (await verifyOpening(q.fw2x, proof.traceRoot));
+      (await verifyOpening(q.fx, proof.traceRoot, L)) &&
+      (await verifyOpening(q.fwx, proof.traceRoot, L)) &&
+      (await verifyOpening(q.fw2x, proof.traceRoot, L));
     if (!traceMerkle) merkleOk = false;
 
     // (b) Recompute the composition value at x from the opened trace values,
@@ -477,7 +479,11 @@ export async function verify(proof: StarkProof): Promise<VerifyResult> {
       const rootR = r < proof.friRoots.length ? proof.friRoots[r] : '';
       const openA: MerkleOpening = { index: layer.a, value: layer.valA, path: layer.pathA };
       const openB: MerkleOpening = { index: layer.b, value: layer.valB, path: layer.pathB };
-      if (!(await verifyOpening(openA, rootR)) || !(await verifyOpening(openB, rootR))) {
+      // FRI layer r is committed over exactly m = L >> r points, so its
+      // openings must carry log2(m) hashes. Pinning the size here is what stops
+      // a prover from answering every position of a big layer out of a small
+      // committed vector.
+      if (!(await verifyOpening(openA, rootR, m)) || !(await verifyOpening(openB, rootR, m))) {
         merkleOk = false;
       }
       // carried value must match this layer's committed value at `carry`.

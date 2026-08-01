@@ -5,7 +5,7 @@
 // polynomial the prover commits to is hashed into one of these trees, and the
 // verifier checks short Merkle paths instead of seeing the full evaluations.
 
-import { mod } from './field';
+import { mod, P } from './field';
 
 export type MerkleTree = {
   values: bigint[];
@@ -96,8 +96,47 @@ export function openMerkle(tree: MerkleTree, index: number): MerkleOpening {
   return { index, value: tree.values[index].toString(), path };
 }
 
-export async function verifyOpening(opening: MerkleOpening, expectedRootHex: string): Promise<boolean> {
-  let h = await hashLeaf(BigInt(opening.value));
+// Verify a Merkle opening against a root.
+//
+// `expectedLeaves` is REQUIRED and is what makes the commitment bind a
+// *position in a vector of known length* rather than just "some leaf somewhere".
+// Without it the check is much weaker than it looks:
+//
+//   * The path length is attacker-chosen. Walking a k-hash path only ever
+//     consumes the low k bits of the index, so a prover who commits a tiny
+//     depth-k tree can answer EVERY position of a claimed 2^d-leaf domain
+//     (d > k) out of just 2^k committed values — index 4, 12, 100 … all
+//     re-derive the same root. Verified empirically before this check existed.
+//   * The index is never range-checked, so a proof can name a position that
+//     does not exist in the committed vector at all.
+//
+// So we pin both: the path must have exactly log2(expectedLeaves) hashes, and
+// the index must be a real position inside that vector. We also reject
+// non-canonical field encodings (value >= P), because `bigintToBytes32`
+// reduces mod P — without this, "5" and "5 + P" would open to the same leaf,
+// which would mean the commitment does not uniquely bind the value.
+export async function verifyOpening(
+  opening: MerkleOpening,
+  expectedRootHex: string,
+  expectedLeaves: number,
+): Promise<boolean> {
+  if (!Number.isInteger(expectedLeaves) || expectedLeaves < 1 || (expectedLeaves & (expectedLeaves - 1)) !== 0) {
+    return false;
+  }
+  const depth = Math.log2(expectedLeaves);
+  if (opening.path.length !== depth) return false;
+  if (!Number.isInteger(opening.index) || opening.index < 0 || opening.index >= expectedLeaves) return false;
+  if (opening.path.some((s) => !/^[0-9a-f]{64}$/.test(s))) return false;
+
+  let value: bigint;
+  try {
+    value = BigInt(opening.value);
+  } catch {
+    return false;
+  }
+  if (value < 0n || value >= P) return false;
+
+  let h = await hashLeaf(value);
   let idx = opening.index;
   for (const siblingHex of opening.path) {
     const sibling = fromHex(siblingHex);
