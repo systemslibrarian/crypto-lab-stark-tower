@@ -8,7 +8,9 @@ import {
   friDemo,
   friFromTrace,
   proofStats,
+  proofSizeBytes,
   securityBits,
+  fieldSecurityCapBits,
   zkOpeningExperiment,
   maskedOpeningSample,
   type StarkProof,
@@ -407,10 +409,11 @@ async function bindExhibit4(): Promise<void> {
 
   // Ground it: measure this demo's own toy proof.
   const { proof } = await prove(16);
-  const bytes = JSON.stringify(proof).length;
+  const bytes = proofSizeBytes(proof);
+  const jsonBytes = JSON.stringify(proof).length;
   setText(
     'size-measured',
-    `This page's own toy proof (N=16, blowup 8, ${proof.params.numQueries} queries) serializes to ${bytes.toLocaleString()} bytes — tiny because the parameters are tiny. Production proofs scale this construction up to real security.`,
+    `This page's own toy proof (N=16, blowup 8, ${proof.params.numQueries} queries) is about ${bytes.toLocaleString()} bytes in the compact binary model used below. Its JSON transport encoding is ${jsonBytes.toLocaleString()} bytes. Both are tiny because the parameters are tiny; neither establishes production security.`,
   );
 }
 
@@ -426,11 +429,17 @@ function bindSecurityCalc(): void {
     const rateLog = Number(blowupEl!.value); // 1..6
     const blowup = 2 ** rateLog;
     const queries = Number(queriesEl!.value);
-    const bits = securityBits(blowup, queries);
-    // Illustrative payload for a 1024-row trace (10 folds), Merkle paths grow
-    // with the LDE size = 1024 * blowup.
-    const folds = 10;
-    const pathLen = 10 + rateLog;
+    const queryBits = securityBits(blowup, queries);
+    const capBits = fieldSecurityCapBits();
+    // This is only the conjectured FRI query term, not end-to-end soundness.
+    // In particular, the toy field introduces algebraic error terms that this
+    // calculator does not model. Never label this number production security.
+    const bits = queryBits;
+    // Reference payload for a 1024-row trace (10 folds). The demo's own traces
+    // are 8 or 16 rows, so this is a scaled-up illustration, labelled as one.
+    const refTraceRows = 1024;
+    const folds = Math.log2(refTraceRows);
+    const pathLen = folds + rateLog;
     const bytes = queries * folds * 2 * pathLen * 32;
 
     // A cheating prover's per-proof success probability is ≈ rate^queries =
@@ -450,10 +459,14 @@ function bindSecurityCalc(): void {
     );
     setText(
       'sec-note',
-      `${bits} bits ${bits >= 100 ? '— production-grade ✓' : bits >= 80 ? '— near production' : '— below production targets'}. A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}. Each query adds ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}); raising the blowup also enlarges every Merkle path. Caveat: queries × log₂(blowup) is the conjectured bound, assuming FRI achieves list decoding up to capacity. Provable bounds (unique decoding, or the Johnson bound) give well under half this — at blowup 8 with 8 queries, roughly 7–12 bits rather than 24.`,
+      `${bits} heuristic FRI-query bits — not an end-to-end security estimate. ` +
+        `This is ${queries} queries × ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}). ` +
+        `This demo's field p = 3·2³⁰+1 gives each field challenge about ${capBits} bits of entropy and also creates field-size-dependent algebraic error terms. Independent challenges can accumulate entropy, so ${capBits} is not a blanket cap on the whole proof; however, those omitted terms mean this calculator cannot honestly turn ${queryBits} into a production-security verdict. ` +
+        `A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}; raising the blowup also enlarges every Merkle path. ` +
+        `Caveat: queries × log₂(blowup) is the conjectured bound, assuming FRI achieves list decoding up to capacity. Provable bounds (unique decoding, or the Johnson bound) give well under half this — at blowup 8 with 8 queries, roughly 7–12 bits rather than 24.`,
     );
     const bitsEl = $('sec-bits');
-    if (bitsEl) bitsEl.className = `sec-num ${bits >= 100 ? 'status-ok' : bits < 80 ? 'status-bad' : ''}`;
+    if (bitsEl) bitsEl.className = 'sec-num';
   }
 
   blowupEl.addEventListener('input', update);
@@ -484,14 +497,21 @@ function bindExhibit5(): void {
       `out of an LDE of <strong>${s.ldeSize}</strong> (≈${pct}%), plus <strong>${s.friOpenings}</strong> FRI-layer points — ` +
       `and never reconstructed the length-${s.traceLength} computation.</p>` +
       `<div class="succinct-grid">` +
-      `<div class="sec-stat"><span class="sec-num">${s.proofBytes.toLocaleString()}</span><span class="sec-cap">proof bytes</span></div>` +
+      `<div class="sec-stat"><span class="sec-num">${s.proofBytes.toLocaleString()}</span><span class="sec-cap">proof bytes (binary)</span></div>` +
       `<div class="sec-stat"><span class="sec-num">${s.uniqueTracePointsOpened + s.friOpenings}</span><span class="sec-cap">committed values seen</span></div>` +
       `<div class="sec-stat"><span class="sec-num">~${s.estimatedSecurityBits}</span><span class="sec-cap">soundness bits (toy)</span></div>` +
       `</div>` +
-      `<p class="hint">That ${s.estimatedSecurityBits}-bit figure is <code>queries &times; log&#8322;(blowup)</code>, ` +
-      `the headline FRI estimate — and it assumes the <em>conjectured</em> list-decoding-to-capacity regime. ` +
-      `Under bounds that are actually proven (unique decoding, or the Johnson bound) the same parameters are ` +
-      `worth roughly 7&ndash;12 bits. Toy either way: production targets ~100.</p>`;
+      `<p class="hint">Proof size is counted as 32 bytes per field element and per Merkle-path hash. ` +
+      `<code>JSON.stringify(proof).length</code> — decimal digit strings and hex paths — is ` +
+      `${s.proofJsonBytes.toLocaleString()} bytes, about ${(s.proofJsonBytes / Math.max(1, s.proofBytes)).toFixed(1)}&times; that; ` +
+      `it measures the transport encoding, not the proof.</p>` +
+      `<p class="hint">The displayed soundness number is only <code>queries &times; log&#8322;(blowup)</code>, the FRI query term. ` +
+      `This demo's field is p = 3&middot;2&#179;&#8304;+1, so each field challenge carries about ${s.fieldCapBits} bits and ` +
+      `field-size-dependent algebraic error terms matter. Independent challenges can accumulate entropy, so that is not a blanket ` +
+      `cap on the whole proof; the honest conclusion is that this toy omits enough terms that it cannot claim end-to-end security. ` +
+      `The query term itself assumes the <em>conjectured</em> list-decoding-to-capacity regime; under ` +
+      `bounds that are actually proven (unique decoding, or the Johnson bound) it is worth roughly 7&ndash;12 bits. ` +
+      `Toy either way: production targets ~100.</p>`;
   }
 
   function renderInspector(p: StarkProof): void {
@@ -535,7 +555,7 @@ function bindExhibit5(): void {
       'e2e-status',
       tamper
         ? `Proof built for a TAMPERED trace (row ${Math.floor(n / 2)} altered). The prover played honest with FRI, so only the low-degree test can catch it. Now verify.`
-        : `Proof generated for n=${n}${zk ? ' (zero-knowledge: trace masked)' : ''}. The proof is ${JSON.stringify(proof).length.toLocaleString()} bytes and contains no full trace.`,
+        : `Proof generated for n=${n}${zk ? ' (zero-knowledge: trace masked)' : ''}. The proof is ${proofSizeBytes(proof).toLocaleString()} bytes in a compact binary encoding (32 B per field element or hash) and contains no full trace.`,
     );
   }
 
@@ -642,7 +662,12 @@ function bindZk(): void {
     }
     setText(
       'zk-note',
-      `Across ${exp.trials} fresh-randomness runs, masked openings spread ~uniformly and match the witness-free simulator (max gap ${(exp.maxBucketGap * 100).toFixed(1)}%). The true value never leaked. The opened points reveal nothing about the witness.`,
+      `Across ${exp.trials} fresh-randomness runs, masked openings spread ~uniformly and match the witness-free simulator (max gap ${(exp.maxBucketGap * 100).toFixed(1)}%). ` +
+        (exp.leakedCount === 0
+          ? 'The true value never leaked in this run — that is the count in the tile above, and it is zero.'
+          : `The true value leaked ${exp.leakedCount} time${exp.leakedCount === 1 ? '' : 's'} in ${exp.trials} runs: a masked opening happened to land exactly on f(x). ` +
+            'At a rate near 1 in p that is expected coincidence rather than a broken mask — but it is what the counter says, so it is what this line says.') +
+        ' The opened points reveal nothing about the witness.',
     );
   }
   $('zk-run')?.addEventListener('click', () => void run());

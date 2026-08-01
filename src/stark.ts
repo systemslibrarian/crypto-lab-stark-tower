@@ -772,7 +772,10 @@ export type ProofStats = {
   ldeSize: number;
   uniqueTracePointsOpened: number; // distinct trace leaves the verifier saw
   friOpenings: number; // FRI layer leaves opened across all queries
-  proofBytes: number;
+  proofBytes: number;      // compact binary encoding: 32 bytes per field element / hash
+  proofJsonBytes: number;  // what JSON.stringify costs — transport, not proof size
+  querySecurityBits: number; // the FRI query term alone
+  fieldCapBits: number;      // the ceiling log2(p) imposes
   estimatedSecurityBits: number;
 };
 
@@ -928,8 +931,11 @@ export function proofStats(proof: StarkProof): ProofStats {
     ldeSize: proof.params.ldeSize,
     uniqueTracePointsOpened: traceIdx.size,
     friOpenings,
-    proofBytes: JSON.stringify(proof).length,
+    proofBytes: proofSizeBytes(proof),
+    proofJsonBytes: JSON.stringify(proof).length,
     estimatedSecurityBits: securityBits(proof.params.blowup, proof.params.numQueries),
+    querySecurityBits: securityBits(proof.params.blowup, proof.params.numQueries),
+    fieldCapBits: fieldSecurityCapBits(),
   };
 }
 
@@ -945,6 +951,41 @@ export function proofStats(proof: StarkProof): ProofStats {
 // 7-12. The UI renders both; do not quote the 24 without the caveat.
 export function securityBits(blowup: number, queries: number): number {
   return Math.round(queries * Math.log2(blowup));
+}
+
+/**
+ * Entropy in one field-element challenge. This is context for the toy field,
+ * not a blanket soundness cap: independent challenges can accumulate entropy.
+ * A complete analysis must also include field-size-dependent algebraic errors.
+ */
+export function fieldSecurityCapBits(modulus: bigint = P): number {
+  return Math.floor(Math.log2(Number(modulus)));
+}
+
+/**
+ * Size of a proof in a compact binary encoding: every field element and every
+ * Merkle path hash is 32 bytes. JSON.stringify(proof).length — what the page
+ * used to print as "proof bytes" — measures decimal digit strings and hex path
+ * text, several times a real serialization, in the section about proof size.
+ */
+export function proofSizeBytes(proof: StarkProof): number {
+  const WORD = 32;
+  let words = 0;
+  const countValue = (v: unknown): void => {
+    if (Array.isArray(v)) {
+      for (const item of v) countValue(item);
+    } else if (typeof v === 'bigint' || typeof v === 'string') {
+      words += 1;
+    } else if (v && typeof v === 'object') {
+      for (const item of Object.values(v as Record<string, unknown>)) countValue(item);
+    } else if (typeof v === 'number') {
+      words += 1;
+    }
+  };
+  // params are public agreement, not transmitted proof material.
+  const { params: _params, ...material } = proof as unknown as Record<string, unknown>;
+  countValue(material);
+  return words * WORD;
 }
 
 // re-export for convenience

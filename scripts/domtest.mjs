@@ -72,7 +72,7 @@ document.getElementById('fri-tamper').dispatchEvent(new dom.window.Event('change
 check('FRI abstract cheat fails low-degree', await waitFor('fri-verdict', 'NOT LOW DEGREE'));
 
 // Exhibit 4: measured proof size + security calculator.
-check('proof size measured', await waitFor('size-measured', 'serializes to'));
+check('proof size measured', await waitFor('size-measured', 'compact binary model'));
 const bitsBefore = text('sec-bits');
 const qEl = document.getElementById('sec-queries');
 qEl.value = '70';
@@ -84,7 +84,7 @@ check('security calculator shows worked example', text('sec-example').includes('
 
 // Exhibit 5: honest prove + verify => accepted.
 document.getElementById('e2e-prove').click();
-check('e2e proof generated', await waitFor('e2e-status', 'bytes and contains no full trace'));
+check('e2e proof generated', await waitFor('e2e-status', 'compact binary encoding'));
 check('e2e succinctness rendered', await waitFor('e2e-succinct', 'distinct trace points'));
 check('e2e query inspector rendered', text('e2e-inspector').includes('Query #0'));
 document.getElementById('e2e-verify').click();
