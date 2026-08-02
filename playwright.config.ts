@@ -22,7 +22,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run preview -- --port ${PORT} --strictPort`,
+    // Build first: `preview` only serves whatever is already in dist/. Without
+    // the build in front, a failing compile leaves the previous good bundle on
+    // disk and the suite passes green against source that no longer builds —
+    // which silently invalidates mutation checking.
+    command: `npm run build && npm run preview -- --port ${PORT} --strictPort`,
     port: PORT,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
