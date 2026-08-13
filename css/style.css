@@ -5,16 +5,25 @@
   --surf: #0d1422;
   --elev: #131c2e;
   --bord: #1c2540;
+  /* A CONTROL boundary, which `--bord` is not. `--bord` is a surface divider:
+     against the `--surf` panels the controls sit on it measures 1.22:1, so a
+     `.bs` button or a `.num-input` select drawn with it has no perceivable edge
+     at all (SC 1.4.11 asks 3:1). This token is the edge a control draws itself
+     with; it clears 4.39:1 on `--surf`, 4.06:1 on `--elev` and 3.72:1 on the
+     lighter of the two `--bg-spot` washes the body gradient paints. */
+  --ctl: #6b7c9e;
   --acc: #3565d8;
   --acc2: #7fa3ff;
   --ok: #34d399;
   --err: #f87171;
   --warn: #fbbf24;
-  /* Stronger variants for SMALL green/red text that sits on a tinted chip or
-     panel background, where the base --ok/--err would drop below AA contrast.
-     In dark theme the base colors already pass, so these alias to them. */
+  /* Stronger variants for SMALL green/red/amber text that sits on a tinted chip
+     or panel background, where the base --ok/--err/--warn would drop below AA
+     contrast. In dark theme the base colors already pass, so these alias to
+     them. */
   --ok-strong: #34d399;
   --err-strong: #f87171;
+  --warn-strong: #fbbf24;
   --tx: #f4f8ff;
   --tx2: #cad8f0;
   --tx3: #93a8ca;
@@ -35,13 +44,30 @@ html[data-theme='light'] {
   --surf: #ffffff;
   --elev: #edf2fa;
   --bord: #c7d2e3;
+  /* Light-theme control boundary: `--bord` is 1.53:1 on white here, so the
+     same controls dissolved into the panel in this theme too. 4.32:1 on
+     `--surf` (#ffffff) and 3.85:1 on `--elev`. */
+  --ctl: #6f7b87;
   --acc: #2f5fd4;
   --acc2: #1847bf;
   --ok: #0d8a5b;
   --err: #c94343;
   --warn: #9d6a00;
-  --ok-strong: #0a6e49;
+  /* Measured against the DARKEST surface each ink actually lands on, not
+     against the page. `--ok-strong` was #0a6e49, chosen for a chip over a white
+     panel; `.badge-real` composites `color-mix(in srgb, var(--ok) 16%,
+     transparent)` over the body's radial wash, which is rgb(186, 215, 222) at
+     the top of the page — a surface those numbers never described — and #0a6e49
+     is only 4.15:1 there. #0a6042 clears 5.01:1 on that worst case and improves
+     every lighter surface it also sits on (`.status-ok`, `.q-chip-ok`). */
+  --ok-strong: #0a6042;
   --err-strong: #b03636;
+  /* Amber had no strong variant at all — the hue that was left out. `.callout
+     strong` painted `--warn` (#9d6a00) on the callout's own
+     `color-mix(--warn 12%)` tint, rgb(233, 230, 220): 3.74:1. This clears
+     4.66:1 there. `--warn` itself is unchanged, so the callout fill, its border
+     and the simulator bars in the ZK histogram do not move. */
+  --warn-strong: #8a5c00;
   --tx: #101827;
   --tx2: #334155;
   --tx3: #51607a;
@@ -78,7 +104,16 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 .resource-link:focus-visible,
-.card:focus-visible {
+.card:focus-visible,
+/* Every `.table-wrap` is now `tabindex="0"`, because `.commit-table` forces a
+   `min-width` of 660px inside it and at phone width the wrapper becomes a
+   scrolling region a keyboard could not reach (WCAG 2.1.1). Anything made
+   focusable needs a visible focus indicator (2.4.7) — adding the tabindex
+   without this line would have closed one defect by opening another. `pre.log`
+   was already focusable and was relying on the UA ring; it is named here so
+   both look the same. */
+.table-wrap:focus-visible,
+pre.log:focus-visible {
   outline: 3px solid var(--acc2);
   outline-offset: 3px;
 }
@@ -159,7 +194,7 @@ select:focus-visible,
 .ex-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
 .ex-num { font-size: 11px; color: var(--tx2); letter-spacing: 0.1em; padding: 4px 9px; border: 1px solid var(--tx3); }
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; letter-spacing: 0.07em; padding: 4px 10px; border-radius: 3px; }
-.badge-real { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent); }
+.badge-real { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok-strong); border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent); }
 .ex-title { font-size: 28px; font-family: var(--sans); font-weight: 600; color: var(--tx); letter-spacing: -0.02em; }
 
 .prose { background: var(--overlay-c); border: 1px solid var(--bord); border-radius: 6px; padding: 17px 18px; margin: 14px 0 16px; }
@@ -177,9 +212,16 @@ select:focus-visible,
 button { font-family: var(--mono); font-size: 12px; padding: 10px 15px; border-radius: 6px; cursor: pointer; letter-spacing: 0.05em; min-height: 44px; }
 .bp { background: var(--acc); color: var(--on-accent); border: 1px solid var(--acc); }
 .bp:hover { filter: brightness(1.05); }
-.bs { background: none; color: var(--tx); border: 1px solid var(--bord); }
+.bs { background: none; color: var(--tx); border: 1px solid var(--ctl); }
 .bs:hover { border-color: var(--tx2); }
-.bd { background: none; color: var(--err); border: 1px solid var(--err); }
+/* `--err-strong`, not `--err`. `.bd:hover` composites
+   `color-mix(in srgb, var(--err) 10%, transparent)` over the panel, which in
+   the light theme is rgb(249, 236, 236) — and that is the state a reader is in
+   IMMEDIATELY AFTER CLICKING, since the pointer is still over the button. The
+   base `--err` (#c94343) measured 4.18:1 there, under AA; `--err-strong`
+   (#b03636) is 5.32:1. In dark `--err-strong` aliases `--err`, so nothing
+   moves. The border stays `--err`, which clears 1.4.11 on its own. */
+.bd { background: none; color: var(--err-strong); border: 1px solid var(--err); }
 .bd:hover { background: color-mix(in srgb, var(--err) 10%, transparent); }
 
 .num-input {
@@ -187,7 +229,7 @@ button { font-family: var(--mono); font-size: 12px; padding: 10px 15px; border-r
   min-height: 40px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid var(--bord);
+  border: 1px solid var(--ctl);
   color: var(--tx);
   background: var(--overlay-d);
   font-family: var(--mono);
@@ -313,7 +355,7 @@ code {
   font-size: 13px;
   margin: 0 0 16px;
 }
-.callout strong { color: var(--warn); }
+.callout strong { color: var(--warn-strong); }
 
 .checklist { display: grid; gap: 8px; }
 .check-row {
@@ -421,7 +463,23 @@ html[data-theme='light'] .zk-true { color: #0a6e49; }
 
 /* Inline glossary: a jargon term with a plain-language definition revealed on
    hover or keyboard focus. Underlined so it reads as interactive. */
-.term { position: relative; display: inline-block; }
+/* The definition popup is positioned against the PROSE BLOCK, not against the
+   inline term.
+   Anchored to the term (`.term { position: relative }` + `.term-def { left: 0 }`)
+   its 448px box started at whatever x the word happened to land on, so for a
+   term in the right half of a line it ran past the page: measured at 1280px,
+   `right = 1486` against a `clientWidth` of 1280, which both scrolled the whole
+   DOCUMENT sideways (WCAG 1.4.10) and left ~200px of the definition off-screen
+   and unreadable. Because the popup is `visibility: hidden` rather than
+   `display: none`, it still took part in layout, so the document scrolled
+   horizontally at ALL times — including at first paint, before anyone hovered
+   anything.
+   Spanning the prose block instead (`left: 0; right: 0`) cannot overflow at any
+   viewport or for any term position, which is the property that matters: a fix
+   that merely moved today's three terms back inside the page would break for
+   the fourth. */
+.term { position: static; display: inline-block; }
+.prose { position: relative; }
 .term-word {
   border-bottom: 1px dashed var(--acc2);
   cursor: help;
@@ -430,9 +488,9 @@ html[data-theme='light'] .zk-true { color: #0a6e49; }
 .term-def {
   position: absolute;
   left: 0;
-  top: 1.6em;
+  right: 0;
+  top: calc(100% + 4px);
   z-index: 40;
-  width: min(28rem, 78vw);
   background: var(--elev);
   border: 1px solid var(--acc);
   border-radius: 6px;

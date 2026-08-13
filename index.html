@@ -183,7 +183,10 @@
         <div class="prose">
           <p>Both prove a statement was computed correctly while revealing little about how. They differ in what they trust and what they cost.</p>
         </div>
-        <div class="table-wrap panel">
+        <!-- `tabindex="0"`: `.commit-table` forces `min-width: 660px` inside this
+             `overflow-x: auto` wrapper, so below ~700px it is a scrolling region with
+             no focusable content — unreachable from a keyboard (WCAG 2.1.1). -->
+        <div class="table-wrap panel" tabindex="0">
           <div class="ph">Side-by-side</div>
           <div class="pb">
             <table class="commit-table" aria-label="STARK versus SNARK comparison">
@@ -243,7 +246,7 @@
         </div>
         <div class="panel">
           <div class="ph">Trace table</div>
-          <div class="pb table-wrap"><table id="air-trace-table" class="commit-table" aria-label="Fibonacci execution trace"></table></div>
+          <div class="pb table-wrap" tabindex="0"><table id="air-trace-table" class="commit-table" aria-label="Fibonacci execution trace"></table></div>
         </div>
         <div class="panel">
           <div class="ph">Constraint residuals</div>
@@ -339,7 +342,7 @@
         </div>
         <div class="panel">
           <div class="ph">Folding rounds</div>
-          <div class="pb table-wrap"><table id="fri-table" class="commit-table" aria-label="FRI folding rounds"></table></div>
+          <div class="pb table-wrap" tabindex="0"><table id="fri-table" class="commit-table" aria-label="FRI folding rounds"></table></div>
         </div>
         <div class="panel">
           <div class="ph">Folding, visualized</div>
@@ -359,7 +362,7 @@
       <section class="exhibit" id="exhibit-4" aria-labelledby="ex4-title">
         <div class="ex-row"><span class="ex-num">EXHIBIT 04</span><span class="badge badge-real">Proof Size Tradeoff</span></div>
         <h2 class="ex-title" id="ex4-title">The Cost: Proof Size</h2>
-        <div class="table-wrap panel">
+        <div class="table-wrap panel" tabindex="0">
           <div class="ph">Representative benchmarks</div>
           <div class="pb">
             <table class="commit-table" id="size-table" aria-label="Proof size benchmarks across ZK systems"></table>
@@ -441,7 +444,14 @@
           <div class="ph">Inspect one query</div>
           <div class="pb"><pre id="e2e-inspector" class="log" tabindex="0" role="log" aria-label="Single FRI query decommitment"></pre></div>
         </div>
-        <div class="exhibit" id="exhibit-5b" aria-labelledby="ex5b-title" style="margin-top: 24px;">
+        <!-- A <section>, not a <div>. `aria-labelledby` on a role-less element is
+             PROHIBITED by ARIA and is silently discarded, so this sub-exhibit's
+             name never reached the accessibility tree at all — and axe files
+             that under `incomplete`, never `violations`, which is exactly why a
+             violations-only gate never mentioned it. `<section>` with an
+             accessible name has an implicit `region` role, which supports the
+             attribute; every sibling exhibit on this page is already one. -->
+        <section class="exhibit" id="exhibit-5b" aria-labelledby="ex5b-title" style="margin-top: 24px;">
           <div class="ex-row"><span class="ex-num">EXHIBIT 05·ZK</span><span class="badge badge-real">Zero-Knowledge</span></div>
           <h3 class="ex-title" id="ex5b-title" style="font-size: 22px;">The "zk" in zk-STARK</h3>
           <div class="prose">
@@ -471,7 +481,7 @@
           <div class="callout">
             <strong>Honesty note:</strong> this measures the necessary condition — revealed values distributed independently of the witness. It is strong evidence, not a formal zero-knowledge proof, which additionally argues a simulator can reproduce <em>entire</em> transcripts. Try the <em>Zero-knowledge mode</em> checkbox above: the proof still verifies, but its trace commitment changes on every run.
           </div>
-        </div>
+        </section>
 
         <details class="disclosure">
           <summary>What a production STARK still adds on top of this demo</summary>
