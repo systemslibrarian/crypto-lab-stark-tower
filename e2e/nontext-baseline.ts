@@ -42,9 +42,4 @@ export const NONTEXT_BASELINE: Record<
   // the `▸`/`▾` marker that is the sole affordance on this page's one
   // `<details>`, since the same rule removes the UA triangle.
   'control-boundary|a.cl-btn': { ratio: 2.45, required: 3, unverified: false },
-  'control-boundary|button#cl-theme-toggle.cl-btn.cl-icon': {
-    ratio: 2.45,
-    required: 3,
-    unverified: false,
-  },
 };
