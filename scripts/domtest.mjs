@@ -30,8 +30,18 @@ const waitFor = async (id, sub, tries = 100) => {
 await import(new URL('./app_bundle.mjs', import.meta.url));
 await wait(50);
 
-// Theme toggle injected.
-check('theme toggle rendered', !!document.querySelector('.theme-toggle'));
+// No theme control. This check used to be its own inverse — it required the
+// legacy `.theme-toggle` button `main.ts` injected. That button was fully wired
+// (its click flipped `data-theme` and wrote `localStorage.theme`) and was kept
+// off the page by nothing but a `display:none!important` rule in index.html.
+// The button and its handler are deleted; this is what keeps them deleted.
+check(
+  'no theme control rendered',
+  !document.querySelector(
+    '#theme-toggle,#themeToggle,.theme-toggle,.theme-toggle-btn,[data-theme-toggle],#cl-theme-toggle'
+  )
+);
+check('page pins the dark theme', document.documentElement.getAttribute('data-theme') === 'dark');
 
 // Exhibit 2: trace + constraints render on init.
 check('AIR trace table populated', document.querySelectorAll('#air-trace-table tbody tr').length > 0);

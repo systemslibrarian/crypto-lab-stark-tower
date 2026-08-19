@@ -177,15 +177,18 @@ export async function assertSingleBanner(page: Page): Promise<void> {
  * attribute silently does nothing.
  *
  * This is checked at RUNTIME rather than inferred from the CSS, because
- * inferring it is exactly what makes the bug survive. Two elements on this page
- * rely on the attribute: `#fri-abstract-controls`, which `main.ts` flips
- * whenever the FRI source radio changes, and the legacy `.theme-toggle` button
- * `initThemeToggle()` creates already-`hidden` because the shared top bar
- * replaced it. The second one is the interesting case: `css/style.css` gives
- * `.theme-toggle` a `display: inline-flex`, which DOES beat the UA rule — the
- * button is hidden only because `index.html`'s shared header adds a
- * `display:none!important` for it. So the attribute is genuinely a no-op there,
- * and this assertion is what would catch the day the `!important` moves.
+ * inferring it is exactly what makes the bug survive. `#fri-abstract-controls`,
+ * which `main.ts` flips whenever the FRI source radio changes, is the element
+ * on this page that relies on the attribute, so the assertion is what catches
+ * the day a stylesheet gives it a `display` and the attribute quietly stops
+ * hiding anything.
+ *
+ * It used to have a second subject: the legacy `.theme-toggle` button, which
+ * `main.ts` created already-`hidden` and `css/style.css` then un-hid with a
+ * `display: inline-flex` that beat the UA rule — leaving it suppressed only by
+ * the `display:none!important` in `index.html`. That button, its click handler
+ * and its CSS are deleted; `scripts/domtest.mjs` now asserts no theme control
+ * renders at all.
  */
 export async function expectHiddenMeansHidden(page: Page, label: string): Promise<void> {
   const notHidden = await page.$$eval('[hidden]', (els) =>
@@ -231,12 +234,13 @@ export async function expectNoOrphanedLists(page: Page): Promise<void> {
  * the emulation is applied imperatively BEFORE the navigation and then
  * *asserted* from inside the page.
  *
- * The theme is seeded through `localStorage` rather than by clicking the
- * toggle, which also pins down a real failure mode: `index.html`'s anti-flash
- * script reads `localStorage.getItem('theme')` and both the shared bar's toggle
- * and `main.ts`'s legacy toggle write `localStorage.setItem('theme', …)`. If
- * those keys drifted apart the theme would silently stop persisting, and this
- * boot fails on `data-theme` rather than quietly scanning dark twice.
+ * There is no toggle to click: dark is the only theme, and `index.html`'s
+ * head script pins `data-theme="dark"` with a literal before first paint while
+ * overwriting whatever `localStorage.theme` holds. Seeding that key here is
+ * therefore a hostile precondition rather than a way to choose a theme — it
+ * stands in for the returning visitor who stored `light` back when the header
+ * carried a toggle, and the `data-theme` assertion below is what proves the pin
+ * beats the stored value instead of the page quietly rendering light.
  *
  * The defaults are asserted at length because which half of this lab a
  * single-configuration gate sees depends entirely on them. Every exhibit here
@@ -254,7 +258,12 @@ export async function boot(page: Page, theme: 'dark' | 'light'): Promise<void> {
   // into a named failure naming the locator.
   page.setDefaultTimeout(20_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.addInitScript((t) => localStorage.setItem('theme', t), theme);
+  // Seed the OPPOSITE of the theme this page pins, so the assertion below is a
+  // real test of the pin rather than of the seed.
+  await page.addInitScript(
+    (t) => localStorage.setItem('theme', t === 'dark' ? 'light' : 'dark'),
+    theme
+  );
   await page.goto('.');
   expect(
     await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),

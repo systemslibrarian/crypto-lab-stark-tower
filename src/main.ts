@@ -48,33 +48,6 @@ function formatOneIn(n: number): string {
 }
 
 // --------------------------------------------------------------------------
-// Theme toggle
-// --------------------------------------------------------------------------
-function initThemeToggle(): void {
-  const root = document.documentElement;
-  const header = document.querySelector('.cl-hero');
-  if (!header) return;
-  const button = document.createElement('button');
-  button.className = 'theme-toggle';
-  button.type = 'button';
-  button.hidden = true;
-  button.setAttribute('aria-hidden', 'true');
-  const apply = (): void => {
-    const isDark = root.getAttribute('data-theme') !== 'light';
-    button.textContent = isDark ? '🌙' : '☀️';
-    button.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-  };
-  button.addEventListener('click', () => {
-    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-    root.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    apply();
-  });
-  header.appendChild(button);
-  apply();
-}
-
-// --------------------------------------------------------------------------
 // Shared renderers
 // --------------------------------------------------------------------------
 function renderCheckList(target: HTMLElement, result: VerifyResult): void {
@@ -675,7 +648,6 @@ function bindZk(): void {
 }
 
 function init(): void {
-  initThemeToggle();
   bindExhibit2();
   bindQuotient();
   bindExhibit3();
