@@ -98,3 +98,5 @@ npm run typecheck  # tsc --noEmit
 *Part of the [Crypto Lab](https://crypto-lab.systemslibrarian.dev/) suite.*
 
 *"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*
+
+<!-- verify/pr-gate: throwaway no-op to prove the PR gate runs and the deploy job skips -->
