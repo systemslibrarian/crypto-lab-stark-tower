@@ -9,3 +9,4 @@ scripts/*_bundle.mjs
 /test-results/
 /playwright-report/
 /.pw-browsers/
+chat.md
