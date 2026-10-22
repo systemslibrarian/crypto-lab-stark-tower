@@ -363,7 +363,7 @@ export async function prove(n: number, options: { tamper?: boolean; zk?: boolean
 // The verifier. It receives only the proof — never the trace. Every rejection
 // path below is a property of the commitments and the low-degree test, not a
 // recomputation of Fibonacci.
-export async function verify(proof: StarkProof): Promise<VerifyResult> {
+async function verifyProof(proof: StarkProof): Promise<VerifyResult> {
   const checks: CheckResult[] = [];
   const N = proof.params.traceLength;
   const L = proof.params.ldeSize;
@@ -376,12 +376,18 @@ export async function verify(proof: StarkProof): Promise<VerifyResult> {
   // pass vacuously.
   const isPow2 = (x: number): boolean => Number.isInteger(x) && x > 0 && (x & (x - 1)) === 0;
   const problems: string[] = [];
+  if (proof.label !== TOY_LABEL) problems.push('protocol label does not match this verifier');
+  if (proof.params.prime !== P.toString()) problems.push(`prime ${proof.params.prime} ≠ ${P}`);
+  if (proof.params.generator !== GENERATOR.toString()) problems.push(`generator ${proof.params.generator} ≠ ${GENERATOR}`);
+  if (proof.params.offset !== GENERATOR.toString()) problems.push(`coset offset ${proof.params.offset} ≠ ${GENERATOR}`);
+  if (typeof proof.params.zk !== 'boolean') problems.push('zero-knowledge flag is not boolean');
   if (proof.params.blowup !== BLOWUP) problems.push(`blowup ${proof.params.blowup} ≠ ${BLOWUP}`);
   if (proof.params.numQueries !== NUM_QUERIES) problems.push(`declared queries ${proof.params.numQueries} ≠ ${NUM_QUERIES}`);
-  if (!isPow2(N)) problems.push(`trace length ${N} is not a power of two`);
-  const expectedBound = proof.params.zk ? nextPow2(N + 3 * NUM_QUERIES) : N;
-  if (L !== expectedBound * BLOWUP) problems.push(`LDE size ${L} ≠ ${expectedBound * BLOWUP}`);
-  if (numFolds !== Math.log2(expectedBound)) problems.push(`fold count ${numFolds} ≠ log₂(${expectedBound})`);
+  const validTraceLength = isPow2(N) && N >= 4;
+  if (!validTraceLength) problems.push(`trace length ${N} is not a supported power of two (minimum 4)`);
+  const expectedBound = validTraceLength ? (proof.params.zk ? nextPow2(N + 3 * NUM_QUERIES) : N) : 0;
+  if (validTraceLength && L !== expectedBound * BLOWUP) problems.push(`LDE size ${L} ≠ ${expectedBound * BLOWUP}`);
+  if (validTraceLength && numFolds !== Math.log2(expectedBound)) problems.push(`fold count ${numFolds} ≠ log₂(${expectedBound})`);
   if (proof.friRoots.length !== numFolds) problems.push(`${proof.friRoots.length} FRI roots for ${numFolds} folds`);
   if (proof.betas.length !== numFolds) problems.push(`${proof.betas.length} FRI challenges for ${numFolds} folds`);
   if (proof.alphas.length !== 3 || proof.compBetas.length !== 3) problems.push('composition challenge lists have the wrong length');
@@ -519,6 +525,24 @@ export async function verify(proof: StarkProof): Promise<VerifyResult> {
 
   const accepted = checks.every((c) => c.ok);
   return { accepted, checks };
+}
+
+// Proofs cross an untyped serialization boundary in real use. Treat missing
+// fields and non-canonical scalar encodings as a failed proof, not as an
+// exception that can escape the verifier and crash its caller.
+export async function verify(proof: StarkProof): Promise<VerifyResult> {
+  try {
+    return await verifyProof(proof);
+  } catch {
+    return {
+      accepted: false,
+      checks: [{
+        name: 'Proof shape & parameters',
+        ok: false,
+        detail: 'Malformed proof encoding or missing required field. Remaining checks skipped.',
+      }],
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

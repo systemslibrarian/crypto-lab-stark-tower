@@ -15,8 +15,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   # Keyed by ref, NOT a bare `pages`. With pull_request now a trigger, a bare
@@ -28,9 +26,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
@@ -42,8 +43,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Accessibility gate (axe-core, WCAG A/AA)
         run: npm run test:a11y
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - name: Package GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: dist
 
@@ -59,29 +61,29 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
   # Dependabot only. Depends on every gate job in this workflow, so a bump can
-  # only merge itself once this lab's whole PR gate went green. Majors are
-  # excluded -- the 2026-08-18 batch had to hold back 109 bumps and they were
-  # overwhelmingly majors (@noble v2 dropped export subpaths, TypeScript 7,
-  # vitest 4), so those still want a human.
+  # only merge itself once this lab's whole PR gate went green.
   dependabot-auto-merge:
     needs: build
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
       actions: write   # required by the deploy dispatch; without it gh workflow run 403s
     steps:
-      - id: meta
-        uses: dependabot/fetch-metadata@v3
       # Majors included on purpose. `needs:` above already required the whole
       # gate to pass, and that gate -- unit tests, build, axe WCAG and the e2e
       # claims -- judges a bump far better than its version number does. A major
@@ -91,27 +93,17 @@ jobs:
         # rejects with "Base branch was modified". That is benign, so try again
         # rather than failing the run over a race.
         run: |
-          merged=""
           for attempt in 1 2 3; do
-            if gh pr merge --squash --delete-branch "$PR_URL"; then
-              merged=1
-              break
-            fi
-            echo "merge attempt $attempt failed; base branch may have moved - retrying"
+            gh pr merge --squash --delete-branch "$PR_URL" && merged=1 && break
             sleep 15
           done
-          if [ -z "$merged" ]; then
-            echo "::warning::gate passed but the merge did not land after 3 attempts;"
-            echo "::warning::leaving this PR open - Dependabot will rebase and retry."
-            exit 0
-          fi
+          [ -n "$merged" ] || { echo "::error::gate passed but the squash merge did not land after 3 attempts; the bump is unmerged and no deploy was dispatched"; exit 1; }
           # A merge made with GITHUB_TOKEN raises no push event -- GitHub suppresses
           # them so workflows cannot retrigger themselves -- so deploy would never run
           # and the site would keep serving the previous build. Ask for it explicitly;
           # a workflow_dispatch through the API is not suppressed. The dispatched run
           # is the same gate-then-deploy pipeline, so a bad merge still ships nothing.
-          gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main \
-            || echo "::warning::deploy dispatch failed; run deploy.yml by hand"
+          gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
