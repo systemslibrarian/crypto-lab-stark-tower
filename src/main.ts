@@ -337,7 +337,7 @@ function bindExhibit3(): void {
           : 'Folded the quotient Q from the honest trace; its eight final evaluations agree. Same object as Exhibit 02·5.'
         : tamper
           ? 'Folded the deliberately high-degree fixture; this run failed final-code membership.'
-          : 'Folded the low-degree fixture; its eight final evaluations agree.',
+          : 'Folded the low-degree abstract polynomial fixture; its eight final evaluations agree.',
     );
   }
 
@@ -429,7 +429,10 @@ function bindSecurityCalc(): void {
     for (let r = 0; r < folds; r += 1) pathHashesPerQuery += 2 * Math.log2(initialDomain >> r);
     const bytes = queries * pathHashesPerQuery * 32;
     const capacityOdds = formatOneIn(1 / ledger.capacityModel.queryError);
-    const fmtBits = (value: number): string => Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2);
+    const fmtBits = (value: number): string => {
+      const nearestInteger = Math.round(value);
+      return Math.abs(value - nearestInteger) < 1e-10 ? nearestInteger.toFixed(0) : value.toFixed(2);
+    };
 
     setText('sec-blowup-val', `${blowup}`);
     setText('sec-queries-val', `${queries}`);

@@ -222,7 +222,7 @@ test('quotient: the honest trace divides cleanly and Q has the degree the flow c
     expect(bound).toBe(size - 2);
     expect(degQ).toBeLessThanOrEqual(bound);
     expect(flow).toContain('LOW DEGREE');
-    expect(flow).toContain('FRI will accept');
+    expect(flow).toContain('The FRI fixture is run below');
     await expect(page.locator('#q-status')).toHaveClass(/status-ok/);
     expect(detail).toContain('remainder is the ZERO polynomial');
   }
