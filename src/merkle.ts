@@ -1,9 +1,10 @@
 // SHA-256 Merkle commitments over field elements.
 //
-// STARKs are *transparent*: their only cryptographic assumption is a
-// collision-resistant hash. There is no trusted setup and no pairing. Every
-// polynomial the prover commits to is hashed into one of these trees, and the
-// verifier checks short Merkle paths instead of seeing the full evaluations.
+// STARKs are transparent: there is no trusted setup or pairing. Collision
+// resistance supplies Merkle binding, while FRI proximity errors and the
+// Fiat-Shamir/BCS random-oracle analysis are separate parts of an end-to-end
+// security argument. Every committed polynomial is hashed into one of these
+// trees, and the verifier checks short paths instead of full evaluations.
 
 import { mod, P } from './field';
 

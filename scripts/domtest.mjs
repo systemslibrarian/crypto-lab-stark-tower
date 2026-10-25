@@ -1,5 +1,5 @@
 // Headless DOM smoke test: load index.html, run the real bundled app, and
-// drive the exhibits to confirm honest=accept and corrupt=reject-via-low-degree.
+// drive the exhibits to confirm honest=accept and the fixed corrupt fixture is rejected.
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 
@@ -61,25 +61,25 @@ document.getElementById('q-honest').click();
 await wait(20);
 check('quotient back to honest', text('q-status').includes('divides C(x) cleanly'));
 
-// Exhibit 3: FRI default run folds the honest trace quotient to a constant.
-check('FRI ran on init', await waitFor('fri-verdict', 'LOW DEGREE'));
-check('FRI honest is low degree', text('fri-verdict').includes('✓ LOW DEGREE'));
+// Exhibit 3: record final-code membership for both fixed fixtures.
+check('FRI ran on init', await waitFor('fri-verdict', 'FINAL-CODE MEMBERSHIP'));
+check('FRI honest fixture reaches final-code membership', text('fri-verdict').includes('✓ FINAL-CODE MEMBERSHIP'));
 check('FRI defaults to the threaded trace source', text('fri-status').includes('Exhibit 02'));
 check('FRI visualization rendered', document.querySelectorAll('#fri-viz svg circle').length > 0);
 // Thread the SAME tampered trace through FRI (the headline improvement).
 document.getElementById('fri-trace-tamper').checked = true;
 document.getElementById('fri-trace-tamper').dispatchEvent(new dom.window.Event('change'));
-check('FRI on tampered trace fails low-degree', await waitFor('fri-verdict', 'NOT LOW DEGREE'));
+check('FRI on tampered trace fails final-code membership', await waitFor('fri-verdict', 'FINAL-CODE MEMBERSHIP FAILED'));
 check('FRI viz shows bad final dots', document.querySelectorAll('#fri-viz svg .viz-dot-bad').length > 0);
 check('FRI tamper message names the same object', text('fri-status').includes('TAMPERED trace'));
 // The abstract-polynomial path still works.
 document.getElementById('fri-trace-tamper').checked = false;
 document.getElementById('fri-src-abstract').checked = true;
 document.getElementById('fri-src-abstract').dispatchEvent(new dom.window.Event('change'));
-check('FRI abstract source collapses to constant', await waitFor('fri-verdict', '✓ LOW DEGREE'));
+check('FRI abstract source reaches final-code membership', await waitFor('fri-verdict', '✓ FINAL-CODE MEMBERSHIP'));
 document.getElementById('fri-tamper').checked = true;
 document.getElementById('fri-tamper').dispatchEvent(new dom.window.Event('change'));
-check('FRI abstract cheat fails low-degree', await waitFor('fri-verdict', 'NOT LOW DEGREE'));
+check('FRI abstract fixed high-degree fixture fails final-code membership', await waitFor('fri-verdict', 'FINAL-CODE MEMBERSHIP FAILED'));
 
 // Exhibit 4: measured proof size + security calculator.
 check('proof size measured', await waitFor('size-measured', 'compact binary model'));
@@ -88,9 +88,11 @@ const qEl = document.getElementById('sec-queries');
 qEl.value = '70';
 qEl.dispatchEvent(new dom.window.Event('input'));
 await wait(20);
-check('security calculator responds to queries', text('sec-bits') !== bitsBefore && Number(text('sec-bits')) > 0);
-check('security calculator shows cheat odds', text('sec-cheat').includes('1 in'));
-check('security calculator shows worked example', text('sec-example').includes('slips through'));
+check('query-model calculator responds to queries', text('sec-bits') !== bitsBefore && Number(text('sec-bits')) > 0);
+check('query-model calculator shows capacity miss odds', text('sec-cheat').includes('1 in'));
+check('query-model calculator labels its worked example', text('sec-example').includes('Capacity-model example only'));
+check('soundness ledger renders five classified rows', document.querySelectorAll('#sec-ledger-body tr').length === 5);
+check('soundness ledger leaves complete bounds unclaimed', text('sec-ledger-body').split('NOT ESTABLISHED').length - 1 === 2);
 
 // Exhibit 5: honest prove + verify => accepted.
 document.getElementById('e2e-prove').click();
@@ -122,14 +124,14 @@ check('e2e superseded proof cannot repaint retired evidence', text('e2e-status')
 e2eN.value = '16';
 e2eN.dispatchEvent(new dom.window.Event('change'));
 
-// Exhibit 5: corrupt + verify => rejected, via low-degree test.
+// Exhibit 5: corrupt + verify => this fixture is rejected at final membership.
 document.getElementById('e2e-corrupt').click();
 check('e2e corrupt staged', await waitFor('e2e-status', 'TAMPERED'));
 document.getElementById('e2e-verify').click();
 check('e2e corrupt REJECTED', await waitFor('e2e-status', 'REJECTED'));
 const checksText = text('e2e-checks');
-check('rejection mentions low-degree test', checksText.includes('low-degree') && checksText.includes('✗'));
-check('verifier did NOT recompute trace', text('e2e-status').includes('never re-ran Fibonacci'));
+check('rejection names final-code membership', checksText.includes('final-code membership') && checksText.includes('✗'));
+check('verifier did NOT recompute trace', text('e2e-status').includes('without the verifier re-running Fibonacci'));
 
 // Exhibit 5·ZK step 1: one masked opening changes on each click; secret stable.
 check('ZK one-opening rendered on init', document.querySelectorAll('#zk-one-viz .zk-one-row').length > 0);

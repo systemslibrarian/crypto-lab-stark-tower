@@ -19,7 +19,7 @@ import {
  * remainder are each measured; FRI on the tampered quotient and the honest one,
  * then switched to the abstract-polynomial source — a whole sub-panel behind
  * the `hidden` attribute that only that radio reveals — with and without the
- * injected high-degree term; both soundness sliders at their minimum (1 bit)
+ * injected high-degree term; both query-model sliders at their minimum (1 bit)
  * and maximum (480 bits); the end-to-end protocol proved, verified ACCEPTED,
  * corrupted, verified REJECTED, then re-proved under zero-knowledge masking and
  * at the shorter trace; four masked openings and a fresh masking experiment;

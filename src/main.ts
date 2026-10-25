@@ -9,15 +9,15 @@ import {
   friFromTrace,
   proofStats,
   proofSizeBytes,
-  securityBits,
-  fieldSecurityCapBits,
   zkOpeningExperiment,
   maskedOpeningSample,
+  P,
   type StarkProof,
   type VerifyResult,
   type FriLayerInfo,
   type ZkExperiment,
 } from './stark';
+import { buildFriSoundnessLedger, fieldChallengeBits } from './soundness';
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -65,8 +65,8 @@ function renderCheckList(target: HTMLElement, result: VerifyResult): void {
   verdict.className = `verdict ${result.accepted ? 'verdict-ok' : 'verdict-bad'}`;
   verdict.setAttribute('role', 'status');
   verdict.textContent = result.accepted
-    ? '✓ ACCEPTED — the verifier is convinced, having only checked hashes and a low-degree test.'
-    : '✗ REJECTED — the verifier caught the cheat without ever recomputing the trace.';
+    ? '✓ ACCEPTED — this proof passed every implemented commitment, composition, final-code and sampled-fold check.'
+    : '✗ REJECTED — this generated fixture failed an implemented proof check without the verifier recomputing the trace.';
   target.appendChild(verdict);
 }
 
@@ -114,7 +114,7 @@ function bindExhibit2(): void {
       'air-status',
       allZero
         ? `Valid trace. Interpolated trace polynomial f has degree ${a.traceDegree} (< ${n}), so it is genuinely low degree.`
-        : 'Constraints VIOLATED — this trace is not a valid Fibonacci computation. A real STARK turns this fact into a high-degree polynomial that FRI will reject.',
+        : 'Constraints VIOLATED — this trace is not a valid Fibonacci computation. The generated quotient becomes high degree; the later fixture run tests its actual FRI outcome.',
     );
     const s = $('air-status');
     if (s) s.className = `hash-label ${allZero ? 'status-ok' : 'status-bad'}`;
@@ -162,8 +162,8 @@ function bindQuotient(): void {
         `<div class="q-step"><span class="q-step-label">quotient Q(x)</span><span class="q-step-val">${degCell}</span></div>` +
         `<div class="q-verdict ${q.cleanDivision ? 'q-verdict-ok' : 'q-verdict-bad'}">` +
         (q.cleanDivision
-          ? `✓ LOW DEGREE — Q stays at or below the honest bound (${q.cleanQuotientBound}). FRI will accept.`
-          : `✗ HIGH DEGREE — Q jumps to ${q.quotientDegree}, near the domain size. FRI will reject.`) +
+          ? `✓ LOW DEGREE — Q stays at or below the honest bound (${q.cleanQuotientBound}). The FRI fixture is run below.`
+          : `✗ HIGH DEGREE — Q jumps to ${q.quotientDegree}, near the domain size. The FRI fixture is run below.`) +
         `</div>`;
     }
 
@@ -251,8 +251,8 @@ function renderFriViz(target: HTMLElement, layers: FriLayerInfo[], finalConstant
   }
   const desc =
     `FRI folding diagram: ${layers.length} layers, from ${layers[0].size} evaluation points down to ` +
-    `${layers[layers.length - 1].size}. The final layer is ` +
-    `${finalConstant ? 'constant, as an honest low-degree polynomial requires' : 'not constant, revealing a cheat'}.`;
+    `${layers[layers.length - 1].size}. The final layer has ${layers[layers.length - 1].size} evaluations; ` +
+    `${finalConstant ? 'all agree, satisfying the degree-less-than-one final-code check' : 'they differ, so this fixture fails final-code membership'}.`;
   target.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="fri-svg" preserveAspectRatio="xMidYMid meet" role="img"><title>${desc}</title>${lines}${dots}${labels}</svg>`;
 }
 
@@ -315,25 +315,29 @@ function bindExhibit3(): void {
       table.innerHTML = head + `<tbody>${body}</tbody>`;
     }
 
-    setText('fri-size', `Estimated query payload: ${r.proofBytesEstimate.toLocaleString()} bytes (${r.numFolds} folds, ${r.domainSize}→${r.domainSize >> r.numFolds} evaluations).`);
+    setText(
+      'fri-size',
+      `Authentication-path hashes only: about ${r.authenticationHashBytesEstimate.toLocaleString()} bytes with duplicate paths uncompressed ` +
+        `(${r.numFolds} folds, ${r.domainSize}→${r.domainSize >> r.numFolds} evaluations). Values, roots, indices and the final codeword are excluded.`,
+    );
 
     if (viz) renderFriViz(viz, r.layers, r.finalConstant);
 
     if (verdict) {
       verdict.className = `verdict ${r.finalConstant ? 'verdict-ok' : 'verdict-bad'}`;
       verdict.textContent = r.finalConstant
-        ? `✓ LOW DEGREE — the final layer collapsed to the single constant ${r.finalValues[0]}. FRI accepts.`
-        : '✗ NOT LOW DEGREE — the final layer is not constant, so FRI rejects. This is exactly how a tampered trace gets caught.';
+        ? `✓ FINAL-CODE MEMBERSHIP — all ${r.finalValues.length} final evaluations equal ${r.finalValues[0]}. This fixture satisfies one FRI acceptance condition; authenticated fold checks are separate.`
+        : `✗ FINAL-CODE MEMBERSHIP FAILED — the ${r.finalValues.length} final evaluations differ, so this generated fixture is rejected at this condition.`;
     }
     setText(
       'fri-status',
       useTrace
         ? tamper
-          ? 'Folded the quotient Q from the TAMPERED trace — it did not collapse to a constant. Same object as Exhibit 02, caught here.'
-          : 'Folded the quotient Q from the honest trace down to a constant. Same object as Exhibit 02·5.'
+          ? 'Folded the quotient Q from the TAMPERED trace — this generated fixture failed final-code membership. Same object as Exhibit 02.'
+          : 'Folded the quotient Q from the honest trace; its eight final evaluations agree. Same object as Exhibit 02·5.'
         : tamper
-          ? 'Folded a deliberately high-degree abstract polynomial.'
-          : 'Folded a low-degree abstract polynomial down to a constant.',
+          ? 'Folded the deliberately high-degree fixture; this run failed final-code membership.'
+          : 'Folded the low-degree fixture; its eight final evaluations agree.',
     );
   }
 
@@ -401,7 +405,7 @@ async function bindExhibit4(): Promise<void> {
 }
 
 // --------------------------------------------------------------------------
-// Exhibit 4 — security ↔ size ↔ speed calculator
+// Exhibit 4 — explicitly bounded query-model and size calculator
 // --------------------------------------------------------------------------
 function bindSecurityCalc(): void {
   const blowupEl = $('sec-blowup') as HTMLInputElement | null;
@@ -412,41 +416,45 @@ function bindSecurityCalc(): void {
     const rateLog = Number(blowupEl!.value); // 1..6
     const blowup = 2 ** rateLog;
     const queries = Number(queriesEl!.value);
-    const queryBits = securityBits(blowup, queries);
-    const capBits = fieldSecurityCapBits();
-    // This is only the conjectured FRI query term, not end-to-end soundness.
-    // In particular, the toy field introduces algebraic error terms that this
-    // calculator does not model. Never label this number production security.
-    const bits = queryBits;
-    // Reference payload for a 1024-row trace (10 folds). The demo's own traces
-    // are 8 or 16 rows, so this is a scaled-up illustration, labelled as one.
+    const rate = 1 / blowup;
+    // Reference payload for a 1024-row degree bound (10 folds). This is a
+    // scaled-up illustration, not the byte length of an encoded proof.
     const refTraceRows = 1024;
     const folds = Math.log2(refTraceRows);
-    const pathLen = folds + rateLog;
-    const bytes = queries * folds * 2 * pathLen * 32;
-
-    // A cheating prover's per-proof success probability is ≈ rate^queries =
-    // (1/blowup)^queries = 2^(−bits). Render it as human-readable 1-in-N odds.
-    const oneInN = Math.pow(blowup, queries); // = 2^bits
-    const cheatOdds = formatOneIn(oneInN);
+    const ledger = buildFriSoundnessLedger(rate, queries, folds);
+    const bits = ledger.capacityModel.queryBits;
+    const capBits = fieldChallengeBits(P);
+    const initialDomain = refTraceRows * blowup;
+    let pathHashesPerQuery = 0;
+    for (let r = 0; r < folds; r += 1) pathHashesPerQuery += 2 * Math.log2(initialDomain >> r);
+    const bytes = queries * pathHashesPerQuery * 32;
+    const capacityOdds = formatOneIn(1 / ledger.capacityModel.queryError);
+    const fmtBits = (value: number): string => Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2);
 
     setText('sec-blowup-val', `${blowup}`);
     setText('sec-queries-val', `${queries}`);
-    setText('sec-bits', `${bits}`);
-    setText('sec-cheat', `1 in ${cheatOdds}`);
+    setText('sec-bits', fmtBits(bits));
+    setText('sec-cheat', `1 in ${capacityOdds}`);
     setText('sec-bytes', `${(bytes / 1024).toFixed(1)} KB`);
-    // Fixed worked example so the odds feel concrete.
     setText(
       'sec-example',
-      `Worked example: with blowup 8 and 8 queries, a liar slips through about 1 in ${formatOneIn(Math.pow(8, 8))} times (each of the 8 queries independently has a 1-in-8 chance of landing where the cheat is invisible).`,
+      `Capacity-model example only: at rate 1/8 with 8 independent uniform queries, rate^queries = (1/8)^8 = 2^-24, or 1 in ${formatOneIn(Math.pow(8, 8))}. ` +
+        `That exact arithmetic is not a protocol success probability unless the required distance and sampling assumptions are established.`,
     );
+    const ledgerBody = $('sec-ledger-body');
+    if (ledgerBody) {
+      ledgerBody.innerHTML =
+        `<tr><td>Capacity model</td><td>${fmtBits(bits)} bits</td><td>heuristic query arithmetic</td></tr>` +
+        `<tr><td>Unique-radius reference</td><td>${fmtBits(ledger.uniqueRadiusQueryOnly.bits)} bits</td><td>query only; requires δ ≥ θ = ${(ledger.uniqueRadiusQueryOnly.radius).toFixed(4)}</td></tr>` +
+        `<tr><td>Johnson-radius reference</td><td>&lt; ${fmtBits(ledger.johnsonLimitQueryOnly.bits)} bits</td><td>query only; δ ≥ ${(ledger.johnsonLimitQueryOnly.radius).toFixed(4)}, θ approaches it from below</td></tr>` +
+        `<tr><td>CL146 FRI IOP bound</td><td>NOT ESTABLISHED</td><td>actual δ and all ${folds} fold MCA terms are absent</td></tr>` +
+        `<tr><td>End-to-end STARK bound</td><td>NOT ESTABLISHED</td><td>also needs algebraic/composition, Merkle/hash and Fiat-Shamir/BCS terms</td></tr>`;
+    }
     setText(
       'sec-note',
-      `${bits} heuristic FRI-query bits — not an end-to-end security estimate. ` +
-        `This is ${queries} queries × ${rateLog} bit${rateLog === 1 ? '' : 's'} (log₂ of blowup ${blowup}). ` +
-        `This demo's field p = 3·2³⁰+1 gives each field challenge about ${capBits} bits of entropy and also creates field-size-dependent algebraic error terms. Independent challenges can accumulate entropy, so ${capBits} is not a blanket cap on the whole proof; however, those omitted terms mean this calculator cannot honestly turn ${queryBits} into a production-security verdict. ` +
-        `A dishonest prover succeeds only if every one of the ${queries} random queries misses the flaw — about 1 in ${cheatOdds}; raising the blowup also enlarges every Merkle path. ` +
-        `Caveat: queries × log₂(blowup) is the conjectured bound, assuming FRI achieves list decoding up to capacity. Provable bounds (unique decoding, or the Johnson bound) give well under half this — at blowup 8 with 8 queries, roughly 7–12 bits rather than 24.`,
+      `${fmtBits(bits)} is exactly −log₂(rate^queries) for the capacity sampling model (${queries} × log₂(${blowup})); it is a heuristic query term, not FRI or STARK soundness. ` +
+        `The unique-radius row assumes δ ≥ θ = (1−rate)/2. The Johnson row assumes δ reaches that radius while θ approaches it from below; its value is a strict limit because CL146 Lemma 2.4 gives the cited MCA estimate only for θ < 1−√rate. ` +
+        `The field range is log₂(p) ≈ ${capBits.toFixed(2)} bits, but the actual hash-to-field distribution and algebraic errors must be accounted for. Missing terms remain NOT ESTABLISHED instead of being treated as zero.`,
     );
     const bitsEl = $('sec-bits');
     if (bitsEl) bitsEl.className = 'sec-num';
@@ -483,19 +491,17 @@ function bindExhibit5(): void {
       `<div class="succinct-grid">` +
       `<div class="sec-stat"><span class="sec-num">${s.proofBytes.toLocaleString()}</span><span class="sec-cap">proof bytes (binary)</span></div>` +
       `<div class="sec-stat"><span class="sec-num">${s.uniqueTracePointsOpened + s.friOpenings}</span><span class="sec-cap">committed values seen</span></div>` +
-      `<div class="sec-stat"><span class="sec-num">~${s.estimatedSecurityBits}</span><span class="sec-cap">soundness bits (toy)</span></div>` +
+      `<div class="sec-stat"><span class="sec-num">${s.soundness.capacityModel.queryBits.toFixed(0)}</span><span class="sec-cap">capacity-model query bits (heuristic)</span></div>` +
       `</div>` +
       `<p class="hint">Proof size is counted as 32 bytes per field element and per Merkle-path hash. ` +
       `<code>JSON.stringify(proof).length</code> — decimal digit strings and hex paths — is ` +
       `${s.proofJsonBytes.toLocaleString()} bytes, about ${(s.proofJsonBytes / Math.max(1, s.proofBytes)).toFixed(1)}&times; that; ` +
       `it measures the transport encoding, not the proof.</p>` +
-      `<p class="hint">The displayed soundness number is only <code>queries &times; log&#8322;(blowup)</code>, the FRI query term. ` +
-      `This demo's field is p = 3&middot;2&#179;&#8304;+1, so each field challenge carries about ${s.fieldCapBits} bits and ` +
-      `field-size-dependent algebraic error terms matter. Independent challenges can accumulate entropy, so that is not a blanket ` +
-      `cap on the whole proof; the honest conclusion is that this toy omits enough terms that it cannot claim end-to-end security. ` +
-      `The query term itself assumes the <em>conjectured</em> list-decoding-to-capacity regime; under ` +
-      `bounds that are actually proven (unique decoding, or the Johnson bound) it is worth roughly 7&ndash;12 bits. ` +
-      `Toy either way: production targets ~100.</p>`;
+      `<p class="hint">The 24-bit tile is exact arithmetic for the <em>capacity-model query heuristic</em>, not a soundness bound. ` +
+      `At this rate and query count, the unique-radius query-only reference is ${s.soundness.uniqueRadiusQueryOnly.bits.toFixed(2)} bits and the Johnson-radius strict limiting query-only value is &lt;${s.soundness.johnsonLimitQueryOnly.bits.toFixed(2)} bits. ` +
+      `The CL146 FRI IOP bound is <strong>NOT ESTABLISHED</strong>: this run does not establish δ or every fold MCA term. ` +
+      `End-to-end STARK security is also <strong>NOT ESTABLISHED</strong> without algebraic/composition, Merkle/hash and Fiat-Shamir/BCS terms. ` +
+      `The field range is log&#8322;(p) &asymp; ${s.fieldChallengeBits.toFixed(2)} bits; that is context, not a security cap.</p>`;
   }
 
   function renderInspector(p: StarkProof): void {
@@ -516,7 +522,7 @@ function bindExhibit5(): void {
         (l, r) => `  round ${r}: layer[${l.a}]=${trunc(l.valA)}, layer[${l.b}]=${trunc(l.valB)}  → fold checked`,
       ),
       '',
-      'The verifier checks these hashes and the low-degree test. Nothing else.',
+      'The verifier checks commitments, composition consistency, final-code membership and every sampled fold relation.',
     ];
     target.textContent = lines.join('\n');
   }
@@ -558,7 +564,7 @@ function bindExhibit5(): void {
     setText(
       'e2e-status',
       tamper
-        ? `Proof built for a TAMPERED trace (row ${Math.floor(n / 2)} altered). The prover played honest with FRI, so only the low-degree test can catch it. Now verify.`
+        ? `Proof built for a TAMPERED trace (row ${Math.floor(n / 2)} altered). In this generated fixture the final-code membership check fails while the authenticated openings remain intact. Now verify.`
         : `Proof generated for n=${n}${zk ? ' (zero-knowledge: trace masked)' : ''}. The proof is ${proofSizeBytes(proof).toLocaleString()} bytes in a compact binary encoding (32 B per field element or hash) and contains no full trace.`,
     );
   }
@@ -575,7 +581,7 @@ function bindExhibit5(): void {
     }
     const proofToVerify = proof;
     const runGeneration = generation;
-    setText('e2e-status', 'Verifying… (checking only commitments + low-degree test)');
+    setText('e2e-status', 'Verifying… (commitments + composition + final code + sampled folds)');
     const result: VerifyResult = await verify(proofToVerify);
     if (runGeneration !== generation || proof !== proofToVerify) return;
     const checks = $('e2e-checks');
@@ -585,7 +591,7 @@ function bindExhibit5(): void {
       result.accepted
         ? 'Verification ACCEPTED.'
         : corrupted
-          ? 'Verification REJECTED — and notice the verifier never re-ran Fibonacci. The cheat surfaced as a failed low-degree test.'
+          ? 'Verification REJECTED — for this generated fixture, final-code membership failed without the verifier re-running Fibonacci.'
           : 'Verification REJECTED.',
     );
   });

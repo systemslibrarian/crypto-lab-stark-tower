@@ -140,16 +140,16 @@
         <div class="cl-hero-main">
           <h1 class="cl-hero-title">STARK Tower</h1>
           <p class="cl-hero-sub">zk-STARK · AIR + FRI · Post-Quantum</p>
-          <p class="cl-hero-desc">Run a real (if small) STARK in your browser — build a trace polynomial and AIR constraints, commit with a SHA-256 Merkle tree, and watch a FRI low-degree test decide whether the proof is accepted or the cheat is caught.</p>
+          <p class="cl-hero-desc">Run a real (if small) STARK in your browser — build a trace polynomial and AIR constraints, commit with a SHA-256 Merkle tree, and inspect every check that accepts the honest proof and rejects the supplied tampered fixture.</p>
         </div>
         <aside class="cl-hero-why" aria-label="Why it matters">
           <span class="cl-hero-why-label">WHY IT MATTERS</span>
-          <p class="cl-hero-why-text">STARKs need no trusted setup and rest only on hash security, which is why they are <em>conjectured</em> to stay sound against quantum adversaries — the assumption is believed, not proven, and the comparison table below says the same. That transparency is why StarkNet, Polygon Miden, and Risc Zero prove correctness at scale without a verifier ever re-running the computation.</p>
+          <p class="cl-hero-why-text">STARKs need no trusted setup. Their commitments are hash based, while FRI contributes information-theoretic proximity errors and the non-interactive Fiat-Shamir/BCS step is analyzed in a random-oracle model. Their post-quantum security is therefore <em>conjectured</em>, not proved. That transparency is why StarkNet, Polygon Miden, and Risc Zero prove correctness at scale without a verifier re-running the computation.</p>
         </aside>
       </header>
 
       <section class="hero-panel">
-        <p class="hero-note">This demo runs a real (if small) STARK in your browser over the STARK-101 field <code>p = 3·2³⁰ + 1</code>: a trace polynomial, a constraint quotient, a SHA-256 Merkle commitment, and a genuine FRI low-degree test. The one idea everything builds toward — <strong>a tampered trace is caught by the proof system itself, not by recomputing Fibonacci</strong> — is demonstrated live in Exhibit&nbsp;05.</p>
+        <p class="hero-note">This demo runs a real (if small) STARK in your browser over the STARK-101 field <code>p = 3·2³⁰ + 1</code>: a trace polynomial, a constraint quotient, a SHA-256 Merkle commitment, and a genuine FRI low-degree test. Exhibit&nbsp;05 shows the supplied tampered fixture rejected by the implemented proof checks, not by recomputing Fibonacci; that observed run is not presented as a universal soundness bound.</p>
         <div class="hero-actions">
           <a class="resource-link" href="https://starkware.co/stark-101/" target="_blank" rel="noopener noreferrer">STARK-101 Tutorial<span class="sr-only"> (opens in new tab)</span></a>
           <a class="resource-link" href="https://eprint.iacr.org/2018/046" target="_blank" rel="noopener noreferrer">STARK Paper (2018/046)<span class="sr-only"> (opens in new tab)</span></a>
@@ -184,7 +184,7 @@
               <thead><tr><th>Property</th><th>STARK</th><th>SNARK (Groth16 / PLONK)</th></tr></thead>
               <tbody>
                 <tr><td>Trusted setup</td><td>None — transparent, public randomness from transcript hashing</td><td>Required (per-circuit or universal ceremony)</td></tr>
-                <tr><td>Cryptographic assumption</td><td>Collision-resistant hash + FRI soundness</td><td>Pairings / discrete log (elliptic curves)</td></tr>
+                <tr><td>Security basis</td><td>Hash commitments + FRI proximity bounds + Fiat-Shamir/BCS random-oracle analysis</td><td>Pairings / discrete log (elliptic curves)</td></tr>
                 <tr><td>Post-quantum</td><td>Conjectured secure</td><td>Broken by Shor's algorithm</td></tr>
                 <tr><td>Proof size</td><td>Large (~45–200 KB)</td><td>Tiny (Groth16 ~128 bytes)</td></tr>
                 <tr><td>Prover scaling</td><td>Quasi-linear in computation size</td><td>Quasi-linear, larger constants</td></tr>
@@ -281,15 +281,15 @@
           <div class="ph">C(x) ÷ Z(x), step by step</div>
           <div class="pb"><pre id="q-detail" class="log" tabindex="0" role="region" aria-label="Constraint quotient division detail"></pre></div>
         </div>
-        <div class="vl"><strong>Why this matters:</strong> <span id="q-why">…</span> A clean division keeps <code>Q</code> low degree; a nonzero remainder forces <code>Q</code>’s degree up to nearly the domain size. That degree explosion is <em>exactly</em> the signal the next exhibit’s FRI test rejects — so a broken constraint and a failed low-degree test are the same event, seen twice.</div>
+        <div class="vl"><strong>Why this matters:</strong> <span id="q-why">…</span> A clean division keeps <code>Q</code> low degree; a nonzero remainder forces this fixture’s interpolated <code>Q</code> up toward the domain size. The next exhibit folds that same object and reports its actual final-code result.</div>
       </section>
 
       <section class="exhibit" id="exhibit-3" aria-labelledby="ex3-title">
         <div class="ex-row"><span class="ex-num">EXHIBIT 03</span><span class="badge badge-real">FRI Low-Degree Test</span></div>
         <h2 class="ex-title" id="ex3-title">Step 2 — FRI: The Heart of STARKs</h2>
-        <div class="trust-banner trust-conceptual"><strong>Real FRI:</strong> genuine even/odd coset folding (<code>f(x), f(−x) → f′(x²)</code>) with Fiat-Shamir challenges and real SHA-256 Merkle roots per layer. A low-degree polynomial collapses to a constant; a high-degree one does not.</div>
+        <div class="trust-banner trust-conceptual"><strong>Real folding, bounded claim:</strong> genuine even/odd coset folding (<code>f(x), f(−x) → f′(x²)</code>) with Fiat-Shamir challenges and real SHA-256 Merkle roots per layer. The page computes honest and fixed tampered fixtures; their outcomes are observations from those runs, not a universal soundness proof.</div>
         <div class="prose">
-          <p>FRI proves a committed polynomial is close to low degree using only hashes and verifier challenges — no trusted setup. Each round halves the degree and the domain. After enough rounds, an honest polynomial becomes a single constant. <strong>That final constant is the whole verdict.</strong></p>
+          <p>FRI tests whether a committed evaluation word is close to a low-degree Reed–Solomon codeword. Each round halves the degree bound and domain. In this implementation the last code has degree below one but still contains <strong>eight evaluations</strong>; all eight must agree. That final-code membership check is only one part of acceptance: the verifier also authenticates commitments and checks sampled composition and fold relations.</p>
         </div>
         <div class="demo-grid">
           <div class="panel">
@@ -324,10 +324,10 @@
             </div>
           </div>
           <div class="panel">
-            <div class="ph">Proof size estimate</div>
+            <div class="ph">Authentication-path estimate</div>
             <div class="pb">
               <p id="fri-size"></p>
-              <p class="hint">Roughly: queries × folds × 2 openings × path length × 32-byte hashes.</p>
+              <p class="hint">This counts 32-byte authentication hashes along each layer's actual shrinking Merkle path. It excludes opened values, roots, indices, transcript material and the revealed final codeword, so it is not a complete proof-size estimate.</p>
             </div>
           </div>
         </div>
@@ -342,12 +342,12 @@
             <ol class="fri-guide">
               <li><span class="fri-guide-key" aria-hidden="true">1</span> The top row is the full evaluation domain — one dot per point where the polynomial was committed.</li>
               <li><span class="fri-guide-key" aria-hidden="true">2</span> Each fold pairs a point with its negative (<code>x</code> and <code>−x</code>, the two parents of one child) and combines them through <code>x²</code> into a single point one row down.</li>
-              <li><span class="fri-guide-key" aria-hidden="true">3</span> That halves both the domain and the degree. After enough folds only the bottom row is left: one dot. If it is a single <strong class="fri-guide-ok">constant (green)</strong>, FRI accepts; if the dots differ (<strong class="fri-guide-bad">red</strong>), it rejects.</li>
+              <li><span class="fri-guide-key" aria-hidden="true">3</span> That halves both the domain and the degree bound. The bottom row here still has eight evaluations. If all eight agree, it belongs to the <strong class="fri-guide-ok">degree-&lt;1 final code (green)</strong>; if they differ, this fixture fails that condition (<strong class="fri-guide-bad">red</strong>). Authenticated sampled fold checks are also required for acceptance.</li>
             </ol>
           </div>
         </div>
         <div id="fri-verdict" class="verdict" role="status"></div>
-        <div class="vl"><strong>Why this matters:</strong> FRI is transparent low-degree testing from hashes alone. Tick the cheat box: the final layer stops being constant, so FRI rejects — and it did so without ever looking at a trace.</div>
+        <div class="vl"><strong>Why this matters:</strong> FRI gives a transparent low-degree test without a trusted setup. Tick the cheat box: in this generated fixture the eight final evaluations stop agreeing, so final-code membership fails. That empirical rejection illustrates one failure path; it is not a universal probability claim.</div>
       </section>
 
       <section class="exhibit" id="exhibit-4" aria-labelledby="ex4-title">
@@ -365,9 +365,9 @@
         </div>
         <div class="vl"><strong>Measured here:</strong> <span id="size-measured">…</span></div>
         <div class="panel">
-          <div class="ph">Security ↔ size ↔ speed: the tradeoff triangle</div>
+          <div class="ph">Query-model arithmetic ↔ authentication bytes</div>
           <div class="pb">
-            <p class="hint">Soundness comes from two knobs: the blowup (code rate) and the number of FRI queries. More of either buys security bits — and costs proof size and verifier time. Move the sliders.</p>
+            <p class="hint">Move the sliders to recompute capacity-model query arithmetic, conditional query-only reference terms and authentication-path bytes. These controls do not calculate FRI or end-to-end STARK soundness.</p>
             <div class="slider-row">
               <label for="sec-blowup">Blowup (rate = 1/blowup): <span id="sec-blowup-val">8</span>×</label>
               <input type="range" id="sec-blowup" min="1" max="6" value="3" step="1" aria-describedby="sec-bits" />
@@ -377,12 +377,19 @@
               <input type="range" id="sec-queries" min="1" max="80" value="32" step="1" aria-describedby="sec-bits" />
             </div>
             <div class="sec-grid">
-              <div class="sec-stat"><span class="sec-num" id="sec-bits">96</span><span class="sec-cap">heuristic FRI-query bits</span></div>
-              <div class="sec-stat"><span class="sec-num" id="sec-cheat">—</span><span class="sec-cap">a liar slips through</span></div>
-              <div class="sec-stat"><span class="sec-num" id="sec-bytes">—</span><span class="sec-cap">≈ FRI query bytes (1,024-row reference trace)</span></div>
+              <div class="sec-stat"><span class="sec-num" id="sec-bits">96</span><span class="sec-cap">capacity-model query bits (heuristic)</span></div>
+              <div class="sec-stat"><span class="sec-num" id="sec-cheat">—</span><span class="sec-cap">capacity-model miss odds</span></div>
+              <div class="sec-stat"><span class="sec-num" id="sec-bytes">—</span><span class="sec-cap">≈ FRI authentication hashes (1,024-row model)</span></div>
             </div>
             <p id="sec-example" class="hint"></p>
             <p id="sec-note" class="hint" role="status" aria-live="polite"></p>
+            <div class="table-wrap" tabindex="0">
+              <table class="commit-table" aria-label="FRI query models and missing soundness evidence">
+                <thead><tr><th>Quantity</th><th>Current value</th><th>Classification</th></tr></thead>
+                <tbody id="sec-ledger-body"></tbody>
+              </table>
+            </div>
+            <p class="hint">Sources: <a href="https://eprint.iacr.org/2026/1367" target="_blank" rel="noopener noreferrer">CL042, ePrint 2026/1367<span class="sr-only"> (opens in new tab)</span></a>, §§2.1–2.5, 4.1–4.3, 5.4–5.5 and 7; <a href="https://eprint.iacr.org/2025/2197" target="_blank" rel="noopener noreferrer">CL145, revision 2 (2026-04-09)<span class="sr-only"> (opens in new tab)</span></a>, §§3–4; and <a href="https://eprint.iacr.org/2025/1993" target="_blank" rel="noopener noreferrer">CL146 v4 (2026-08-25)<span class="sr-only"> (opens in new tab)</span></a>, Lemma 2.4, §§3.1–3.2 and Theorem 5.2. CL145's extension-field counterexample is context for cautious labels; it is not an attack on this prime-field toy.</p>
           </div>
         </div>
         <div class="prose">
@@ -394,9 +401,9 @@
       <section class="exhibit" id="exhibit-5" aria-labelledby="ex5-title">
         <div class="ex-row"><span class="ex-num">EXHIBIT 05</span><span class="badge badge-real">End-to-End STARK</span></div>
         <h2 class="ex-title" id="ex5-title">Step 3 — Prove and Verify in the Browser</h2>
-        <div class="trust-banner trust-conceptual"><strong>The honest core.</strong> This runs the full protocol: trace LDE + Merkle commitment, composition quotient, real FRI, and query decommitments. The verifier receives <em>only the proof</em> — never your trace — and accepts or rejects from Merkle openings plus the FRI low-degree test. Parameters are toy — blowup 8 with 8 queries, which the standard <code>queries × log₂(blowup)</code> estimate puts at <strong>24 bits</strong> (the figure the panel below renders), and only ~7&ndash;12 bits under provable rather than conjectured FRI bounds — and zero-knowledge masking is off by default — tick <em>Zero-knowledge mode</em> below to add it; the soundness mechanism is real.</div>
+        <div class="trust-banner trust-conceptual"><strong>The honest core.</strong> This runs the implemented toy protocol: trace LDE + Merkle commitment, composition quotient, FRI folds, final-code membership and query decommitments. The verifier receives <em>only the proof</em>, never the full trace. At blowup 8 with 8 queries, <code>−log₂((1/8)⁸) = 24</code> is exact capacity-model query arithmetic, but it is <strong>not a FRI or end-to-end soundness bound</strong>. This run does not establish δ, every fold MCA error, algebraic/composition errors, Merkle/hash binding error or Fiat-Shamir/BCS loss, so those bounds remain <strong>NOT ESTABLISHED</strong>.</div>
         <div class="callout">
-          <strong>Watch for this:</strong> after <em>Corrupt trace → Verify proof</em>, the failing check is <em>"FRI low-degree test"</em>, not a trace recomputation. That is the entire point of a STARK: the cheat is caught algebraically, succinctly, blind to the witness.
+          <strong>Watch for this:</strong> after <em>Corrupt trace → Verify proof</em>, this generated fixture fails <em>"FRI final-code membership"</em>, not a trace recomputation. The other authenticated checks remain visible, making the observed failure path independently inspectable without turning one rejection into a universal claim.
         </div>
         <div class="demo-grid">
           <div class="panel">
@@ -478,12 +485,12 @@
           <summary>What a production STARK still adds on top of this demo</summary>
           <div class="disclosure-body">
             <p><strong>Already implemented here:</strong> per-constraint <em>degree adjustment</em> (<code>αᵢ + βᵢ·x^(D−dᵢ)</code>, so a cheater cannot hide a high-degree term in a low-degree slot) and optional <em>zero-knowledge masking</em> of the trace polynomial (demonstrated just above).</p>
-            <p><strong>Real security parameters.</strong> Production systems target ~100-bit soundness: a larger blowup and dozens of queries (see Exhibit&nbsp;04's calculator), plus longer traces (2¹⁰–2²⁴ rows) interpolated with NTTs instead of the O(n²) Lagrange interpolation used here for clarity.</p>
+            <p><strong>Real security accounting.</strong> Production systems commonly target around 100 bits, but a larger blowup and more queries do not by themselves prove that target. A complete analysis accounts for proximity and every fold error, AIR/composition terms, commitment assumptions and the non-interactive transform. Production implementations also use longer traces (2¹⁰–2²⁴ rows) and NTTs instead of the O(n²) Lagrange interpolation used here.</p>
             <p><strong>A full zero-knowledge proof.</strong> We verify the masking empirically (openings independent of the witness). A production claim also exhibits a simulator that reproduces entire transcripts — commitments, paths, and FRI layers — without the witness, and masks the composition and FRI layers too.</p>
             <p><strong>DEEP / out-of-domain sampling.</strong> Stronger soundness samples the composition at a random point outside the evaluation domain, tightening the proximity gap. The core idea — commit, then prove low degree — is identical.</p>
           </div>
         </details>
-        <div class="vl"><strong>Why this matters:</strong> even at toy size, a few random queries plus one low-degree test catch an inconsistent trace with high probability — and the verifier's work is independent of how long the computation was.</div>
+        <div class="vl"><strong>Why this matters:</strong> this toy shows a verifier checking a committed computation without reconstructing the trace. Its work is sublinear and grows polylogarithmically with the evaluation domain through the fold count and Merkle paths; it is not independent of computation length. The displayed tampered fixture is rejected, while its general rejection probability remains unclaimed.</div>
       </section>
 
       <section class="exhibit" id="exhibit-6" aria-labelledby="ex6-title">
