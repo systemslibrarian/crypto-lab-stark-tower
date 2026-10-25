@@ -365,6 +365,21 @@ test('FRI: the abstract-polynomial source accepts low degree and rejects an inje
   expect(await runFri(page)).toContain('LOW DEGREE');
 });
 
+test('FRI: a superseded fold cannot repaint evidence for older controls', async ({ page }) => {
+  await expect(page.locator('#fri-status')).not.toHaveText('Folding…', { timeout: 30_000 });
+  await page.evaluate(() => {
+    (document.getElementById('fri-run') as HTMLButtonElement).click();
+    const n = document.getElementById('fri-n') as HTMLSelectElement;
+    n.value = '8';
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  await expect(page.locator('#fri-status')).toContainText('honest trace', { timeout: 30_000 });
+  expect((await readFriTable(page))[0].size).toBe(8 * 8);
+  await page.waitForTimeout(500);
+  expect((await readFriTable(page))[0].size, 'the older n=16 fold never paints over n=8').toBe(8 * 8);
+});
+
 // ════════════ Exhibit 4 — proof size and the security calculator ════════════
 
 test('proof size: the benchmark table matches the chart and the size ordering the README claims', async ({ page }) => {
@@ -620,6 +635,34 @@ test('verify: pressing Verify with no proof says so instead of claiming anything
   await page.locator('#e2e-verify').click();
   await expect(page.locator('#e2e-status')).toHaveText('Generate a proof first.');
   await expect(page.locator('#e2e-checks .verdict')).toHaveCount(0);
+});
+
+test('prove: changed inputs retire completed and in-flight proof evidence', async ({ page }) => {
+  await proveE2E(page, 'prove');
+  await verifyE2E(page);
+
+  await page.locator('#e2e-n').selectOption('8');
+  await expect(page.locator('#e2e-status')).toHaveText('Inputs changed. Generate a new proof for the current settings.');
+  await expect(page.locator('#e2e-checks')).toBeEmpty();
+  await expect(page.locator('#e2e-inspector')).toBeEmpty();
+  await expect(page.locator('#e2e-transcript')).toContainText('No proof generated for the current settings.');
+  await page.locator('#e2e-verify').click();
+  await expect(page.locator('#e2e-status')).toHaveText('Generate a proof first.');
+
+  await page.locator('#e2e-n').selectOption('16');
+  await page.evaluate(() => {
+    (document.getElementById('e2e-prove') as HTMLButtonElement).click();
+    const n = document.getElementById('e2e-n') as HTMLSelectElement;
+    n.value = '8';
+    n.dispatchEvent(new Event('change', { bubbles: true }));
+    (document.getElementById('e2e-prove') as HTMLButtonElement).click();
+  });
+
+  await expect(page.locator('#e2e-status')).toContainText('Proof generated for n=8', { timeout: 60_000 });
+  expect((await readSuccinct(page)).traceLen).toBe(8);
+  await page.waitForTimeout(500);
+  await expect(page.locator('#e2e-status')).toContainText('Proof generated for n=8');
+  expect((await readSuccinct(page)).traceLen, 'the older n=16 proof never repaints the panel').toBe(8);
 });
 
 // ════════════ Exhibit 5b — the "zk" in zk-STARK ════════════

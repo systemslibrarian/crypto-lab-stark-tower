@@ -101,6 +101,27 @@ document.getElementById('e2e-verify').click();
 check('e2e honest ACCEPTED', await waitFor('e2e-status', 'ACCEPTED'));
 check('e2e accept verdict shown', text('e2e-checks').includes('ACCEPTED'));
 
+// Changing a proof input retires every claim tied to the old settings.
+const e2eN = document.getElementById('e2e-n');
+e2eN.value = '8';
+e2eN.dispatchEvent(new dom.window.Event('change'));
+check('e2e input change retires proof status', text('e2e-status').includes('Inputs changed'));
+check('e2e input change clears verifier verdict', text('e2e-checks') === '');
+check('e2e input change clears query inspector', text('e2e-inspector') === '');
+document.getElementById('e2e-verify').click();
+check('e2e retired proof cannot be verified', text('e2e-status').includes('Generate a proof first'));
+
+// A superseded asynchronous proof must not restore evidence for old controls.
+e2eN.value = '16';
+e2eN.dispatchEvent(new dom.window.Event('change'));
+document.getElementById('e2e-prove').click();
+e2eN.value = '8';
+e2eN.dispatchEvent(new dom.window.Event('change'));
+await wait(500);
+check('e2e superseded proof cannot repaint retired evidence', text('e2e-status').includes('Inputs changed') && text('e2e-inspector') === '');
+e2eN.value = '16';
+e2eN.dispatchEvent(new dom.window.Event('change'));
+
 // Exhibit 5: corrupt + verify => rejected, via low-degree test.
 document.getElementById('e2e-corrupt').click();
 check('e2e corrupt staged', await waitFor('e2e-status', 'TAMPERED'));

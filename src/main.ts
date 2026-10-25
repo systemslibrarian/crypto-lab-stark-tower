@@ -267,6 +267,7 @@ function bindExhibit3(): void {
   const srcTrace = $('fri-src-trace') as HTMLInputElement | null;
   const traceControls = $('fri-trace-controls');
   const abstractControls = $('fri-abstract-controls');
+  let generation = 0;
 
   function syncSource(): void {
     const useTrace = srcTrace?.checked ?? true;
@@ -275,7 +276,18 @@ function bindExhibit3(): void {
   }
 
   async function run(): Promise<void> {
+    const runGeneration = ++generation;
     const useTrace = srcTrace?.checked ?? true;
+    const table = $('fri-table');
+    if (table) table.innerHTML = '';
+    setText('fri-size', '');
+    const viz = $('fri-viz');
+    if (viz) viz.innerHTML = '';
+    const verdict = $('fri-verdict');
+    if (verdict) {
+      verdict.className = 'verdict';
+      verdict.textContent = '';
+    }
     setText('fri-status', 'Folding…');
     let r;
     let tamper: boolean;
@@ -288,8 +300,8 @@ function bindExhibit3(): void {
       tamper = tamperBox?.checked ?? false;
       r = await friDemo(degree, { tamper });
     }
+    if (runGeneration !== generation) return;
 
-    const table = $('fri-table');
     if (table) {
       const head = '<thead><tr><th>round</th><th>domain</th><th>est. degree</th><th>challenge β</th><th>layer root</th></tr></thead>';
       const body = r.layers
@@ -305,10 +317,8 @@ function bindExhibit3(): void {
 
     setText('fri-size', `Estimated query payload: ${r.proofBytesEstimate.toLocaleString()} bytes (${r.numFolds} folds, ${r.domainSize}→${r.domainSize >> r.numFolds} evaluations).`);
 
-    const viz = $('fri-viz');
     if (viz) renderFriViz(viz, r.layers, r.finalConstant);
 
-    const verdict = $('fri-verdict');
     if (verdict) {
       verdict.className = `verdict ${r.finalConstant ? 'verdict-ok' : 'verdict-bad'}`;
       verdict.textContent = r.finalConstant
@@ -454,6 +464,7 @@ function bindExhibit5(): void {
   const nSel = $('e2e-n') as HTMLSelectElement | null;
   let proof: StarkProof | null = null;
   let corrupted = false;
+  let generation = 0;
 
   function showTranscript(lines: string[]): void {
     const el = $('e2e-transcript');
@@ -512,11 +523,31 @@ function bindExhibit5(): void {
 
   const zkBox = $('e2e-zk') as HTMLInputElement | null;
 
+  function clearProofEvidence(status: string): void {
+    proof = null;
+    corrupted = false;
+    showTranscript(['No proof generated for the current settings.', '', 'Click "Generate proof" to run the prover, then "Verify proof".']);
+    const succinct = $('e2e-succinct');
+    if (succinct) succinct.innerHTML = '<p class="hint">Generate a proof to see how few committed values the verifier inspects.</p>';
+    const inspector = $('e2e-inspector');
+    if (inspector) inspector.textContent = '';
+    const checks = $('e2e-checks');
+    if (checks) checks.innerHTML = '';
+    setText('e2e-status', status);
+  }
+
+  function retireProof(): void {
+    generation += 1;
+    clearProofEvidence('Inputs changed. Generate a new proof for the current settings.');
+  }
+
   async function generate(tamper: boolean): Promise<void> {
+    const runGeneration = ++generation;
     const n = Number(nSel?.value ?? 16);
     const zk = zkBox?.checked ?? false;
-    setText('e2e-status', tamper ? 'Generating a proof for a tampered trace…' : 'Generating proof…');
+    clearProofEvidence(tamper ? 'Generating a proof for a tampered trace…' : 'Generating proof…');
     const r = await prove(n, { tamper, zk });
+    if (runGeneration !== generation) return;
     proof = r.proof;
     corrupted = tamper;
     showTranscript(r.diag.transcript);
@@ -534,14 +565,19 @@ function bindExhibit5(): void {
 
   $('e2e-prove')?.addEventListener('click', () => void generate(false));
   $('e2e-corrupt')?.addEventListener('click', () => void generate(true));
+  nSel?.addEventListener('change', retireProof);
+  zkBox?.addEventListener('change', retireProof);
 
   $('e2e-verify')?.addEventListener('click', async () => {
     if (!proof) {
       setText('e2e-status', 'Generate a proof first.');
       return;
     }
+    const proofToVerify = proof;
+    const runGeneration = generation;
     setText('e2e-status', 'Verifying… (checking only commitments + low-degree test)');
-    const result: VerifyResult = await verify(proof);
+    const result: VerifyResult = await verify(proofToVerify);
+    if (runGeneration !== generation || proof !== proofToVerify) return;
     const checks = $('e2e-checks');
     if (checks) renderCheckList(checks, result);
     setText(

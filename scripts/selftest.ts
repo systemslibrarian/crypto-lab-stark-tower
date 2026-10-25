@@ -173,6 +173,11 @@ async function main() {
   await rejects('truncate the final layer to one value', (p) => { p.finalLayer = p.finalLayer.slice(0, 1); });
   await rejects('claim zero FRI folds', (p) => { p.params.numFolds = 0; p.friRoots = []; p.betas = []; });
   await rejects('claim a smaller LDE than the blowup requires', (p) => { p.params.ldeSize = p.params.ldeSize / 2; });
+  await rejects('change the protocol label', (p) => { p.label += ' forged'; });
+  await rejects('change the declared field prime', (p) => { p.params.prime = (BigInt(p.params.prime) + 2n).toString(); });
+  await rejects('change the declared field generator', (p) => { p.params.generator = (BigInt(p.params.generator) + 1n).toString(); });
+  await rejects('change the LDE coset offset', (p) => { p.params.offset = (BigInt(p.params.offset) + 1n).toString(); });
+  await rejects('use a malformed scalar encoding', (p) => { p.alphas[0] = 'not-a-field-element'; });
   const stripped = clone();
   stripped.queries = [];
   const sres = await verify(stripped);
