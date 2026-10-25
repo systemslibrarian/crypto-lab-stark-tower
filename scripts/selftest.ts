@@ -1,14 +1,25 @@
 // Crypto correctness self-test. Bundled by esbuild and run under Node.
-// Asserts: honest proofs verify; tampered proofs are rejected BY THE PROOF
-// SYSTEM (low-degree test), not by recomputing the trace.
+// Asserts: honest proofs verify; fixed tampered fixtures are rejected by the
+// implemented proof checks, not by recomputing the trace.
 import { prove, verify, airAnalysis, quotientAnalysis, friDemo, friFromTrace, zkOpeningExperiment, maskedOpeningSample } from '../src/stark';
 import { P, GENERATOR, rootOfUnity, pow, mul } from '../src/field';
 import { buildMerkle, openMerkle, verifyOpening } from '../src/merkle';
+import { buildFriSoundnessLedger, cappedUnionBound, errorBits, fieldChallengeBits } from '../src/soundness';
 
 let failures = 0;
 function check(name: string, cond: boolean, extra = '') {
   console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${extra ? '  — ' + extra : ''}`);
   if (!cond) failures += 1;
+}
+
+function close(actual: number, expected: number, tolerance = 1e-10): boolean {
+  return Math.abs(actual - expected) <= tolerance;
+}
+
+function throws(name: string, fn: () => unknown): void {
+  let threw = false;
+  try { fn(); } catch { threw = true; }
+  check(name, threw);
 }
 
 async function main() {
@@ -23,6 +34,64 @@ async function main() {
     check(`v^blowup = w for N=${N}`, pow(v, 8n) === w);
   }
 
+  // Exact query-model arithmetic stays separate from claims that need actual
+  // distance, every fold error and the surrounding protocol terms.
+  {
+    const ledger = buildFriSoundnessLedger(1 / 8, 8, 4);
+    check('soundness: capacity arithmetic is exactly 24 query bits', ledger.capacityModel.queryBits === 24);
+    check('soundness: capacity row is explicitly heuristic', ledger.capacityModel.classification === 'heuristic');
+    check('soundness: unique-radius query-only reference is 6.6406 bits', close(ledger.uniqueRadiusQueryOnly.bits, 6.640599988461501));
+    check('soundness: Johnson query-only value is a strict 12-bit limit', close(ledger.johnsonLimitQueryOnly.bits, 12));
+    check('soundness: FRI IOP bound is not invented from missing evidence', ledger.friIop.status === 'not-established' && ledger.friIop.error === null);
+    check('soundness: end-to-end bound is not invented from missing evidence', ledger.endToEnd.status === 'not-established' && ledger.endToEnd.error === null);
+    check('soundness: missing FRI ledger names delta', ledger.friIop.missing.includes('initial-word distance delta'));
+    check('soundness: missing FRI ledger names every fold term', ledger.friIop.missing.includes('all 4 fold MCA error terms'));
+
+    const johnson = 1 - Math.sqrt(1 / 8);
+    const outsideMcaDomain = buildFriSoundnessLedger(1 / 8, 8, 2, {
+      distance: 0.7,
+      theta: johnson,
+      foldMcaErrors: [0.01, 0.01],
+    });
+    check('soundness: Johnson boundary is rejected by the strict MCA guard', !outsideMcaDomain.citedMcaDomain.supported);
+    check('soundness: Theorem 5.2 query term still exists at the Johnson boundary', outsideMcaDomain.theoremQuery.status === 'established');
+    check('soundness: nontrivial cited MCA instantiation stops at the Johnson boundary', outsideMcaDomain.friIop.status === 'not-established');
+
+    const partialFolds = buildFriSoundnessLedger(1 / 8, 8, 2, {
+      distance: 0.5,
+      theta: 0.4,
+      foldMcaErrors: [0.01],
+    });
+    check('soundness: one of two fold errors is incomplete, not zero', partialFolds.friIop.status === 'not-established');
+
+    const complete = buildFriSoundnessLedger(1 / 8, 8, 2, {
+      distance: 0.5,
+      theta: 0.4,
+      foldMcaErrors: [0.01, 0.02],
+      algebraicCompositionError: 0.03,
+      merkleHashError: 0.04,
+      fiatShamirBcsError: 0.05,
+    });
+    const expectedQuery = Math.pow(1 - Math.min(0.4, 0.5), 8);
+    check('soundness: CL146 conditional query formula uses min(theta, delta)', close(complete.theoremQuery.error!, expectedQuery));
+    check('soundness: complete FRI terms use their capped union bound', close(complete.friIop.error!, expectedQuery + 0.01 + 0.02));
+    check('soundness: complete surrounding terms produce an explicit aggregate', close(complete.endToEnd.error!, expectedQuery + 0.01 + 0.02 + 0.03 + 0.04 + 0.05));
+    check('soundness: union bounds cap at one', cappedUnionBound([0.7, 0.6]) === 1);
+    check('soundness: an error of one is zero bits, never negative', errorBits(1) === 0);
+    check('soundness: field range is context computed from the actual modulus', close(fieldChallengeBits(P), Math.log2(Number(P))));
+
+    throws('soundness: rate zero rejected', () => buildFriSoundnessLedger(0, 8, 4));
+    throws('soundness: rate one rejected', () => buildFriSoundnessLedger(1, 8, 4));
+    throws('soundness: a rate above the CL146 Construction 4.4 domain is rejected', () => buildFriSoundnessLedger(0.75, 8, 4));
+    throws('soundness: fractional query count rejected', () => buildFriSoundnessLedger(1 / 8, 1.5, 4));
+    throws('soundness: negative fold count rejected', () => buildFriSoundnessLedger(1 / 8, 8, -1));
+    throws('soundness: distance above one rejected', () => buildFriSoundnessLedger(1 / 8, 8, 4, { distance: 1.1 }));
+    throws('soundness: theta below zero rejected', () => buildFriSoundnessLedger(1 / 8, 8, 4, { theta: -0.1 }));
+    throws('soundness: excess fold terms rejected', () => buildFriSoundnessLedger(1 / 8, 8, 1, { foldMcaErrors: [0.1, 0.1] }));
+    throws('soundness: invalid union term rejected', () => cappedUnionBound([0.1, 1.1]));
+    throws('soundness: invalid field modulus rejected', () => fieldChallengeBits(1n));
+  }
+
   for (const N of [8, 16]) {
     // Honest proof must verify.
     const { proof, diag } = await prove(N);
@@ -30,6 +99,7 @@ async function main() {
     check(`honest deg(CP) < N N=${N}`, diag.compositionDegree < N, `deg=${diag.compositionDegree}`);
     const res = await verify(proof);
     check(`honest proof ACCEPTED N=${N}`, res.accepted, res.checks.filter((c) => !c.ok).map((c) => c.name).join(', '));
+    check(`non-ZK final code has eight evaluations N=${N}`, proof.finalLayer.length === 8);
 
     // Tampered proof must be rejected.
     const t = await prove(N, { tamper: true });
@@ -37,9 +107,9 @@ async function main() {
     check(`tampered deg(CP) high N=${N}`, t.diag.compositionDegree >= N, `deg=${t.diag.compositionDegree}`);
     const tres = await verify(t.proof);
     check(`tampered proof REJECTED N=${N}`, !tres.accepted);
-    // The rejection must come from the low-degree test, NOT from recomputation.
-    const lowDeg = tres.checks.find((c) => c.name.includes('low-degree'));
-    check(`tampered rejection is via low-degree test N=${N}`, !!lowDeg && !lowDeg.ok, lowDeg?.detail);
+    // Record the exact observed failure for this generated fixture.
+    const finalMembership = tres.checks.find((c) => c.name.includes('final-code membership'));
+    check(`tampered fixture fails final-code membership N=${N}`, !!finalMembership && !finalMembership.ok, finalMembership?.detail);
 
     // A flipped commitment leaf must break Merkle verification.
     const bad = JSON.parse(JSON.stringify(proof)) as typeof proof;
@@ -55,11 +125,12 @@ async function main() {
   const airBad = airAnalysis(16, 8);
   check('airAnalysis tamper produces nonzero residual', airBad.transitions.some((t) => t.value !== 0n));
 
-  // friDemo: low-degree input collapses to a constant; tampered does not.
+  // friDemo: record the actual final-code result of both fixed fixtures.
   const friLow = await friDemo(8);
-  check('friDemo low-degree collapses to constant', friLow.finalConstant && friLow.lowDegree);
+  check('friDemo honest fixture reaches final-code membership', friLow.finalConstant && friLow.finalCodewordMember);
+  check('friDemo final code has eight evaluations', friLow.finalValues.length === 8);
   const friHigh = await friDemo(8, { tamper: true });
-  check('friDemo high-degree fails to collapse', !friHigh.finalConstant && !friHigh.lowDegree);
+  check('friDemo fixed high-degree fixture fails final-code membership', !friHigh.finalConstant && !friHigh.finalCodewordMember);
 
   // --- Quotient panel: the missing middle step is real division, not faked. ---
   for (const N of [8, 16]) {
@@ -99,6 +170,7 @@ async function main() {
     check(`zk params: domain enlarged for masking N=${N}`, z.proof.params.zk && z.proof.params.ldeSize === expectedLde, `lde=${z.proof.params.ldeSize}`);
     const zres = await verify(z.proof);
     check(`zk honest proof ACCEPTED N=${N}`, zres.accepted, zres.checks.filter((c) => !c.ok).map((c) => c.name).join(', '));
+    check(`ZK final code has eight evaluations N=${N}`, z.proof.finalLayer.length === 8);
     const zt = await prove(N, { zk: true, tamper: true });
     const ztres = await verify(zt.proof);
     check(`zk tampered proof REJECTED N=${N}`, !ztres.accepted);
@@ -164,7 +236,14 @@ async function main() {
   await rejects('flip a FRI layer opened value', (p) => { p.queries[0].layers[0].valA = (BigInt(p.queries[0].layers[0].valA) + 1n).toString(); });
   await rejects('flip a trace opening f(wx)', (p) => { p.queries[0].fwx.value = (BigInt(p.queries[0].fwx.value) + 1n).toString(); });
   await rejects('swap a Merkle path hash', (p) => { const pa = p.queries[0].fx.path; pa[0] = pa[0].slice(0, -1) + (pa[0].endsWith('0') ? '1' : '0'); });
-  await rejects('forge final layer to a fake constant', (p) => { p.finalLayer = p.finalLayer.map(() => '12345'); });
+  const fakeFinal = clone();
+  fakeFinal.finalLayer = fakeFinal.finalLayer.map(() => '12345');
+  const fakeFinalResult = await verify(fakeFinal);
+  check('final membership alone cannot accept a proof', !fakeFinalResult.accepted);
+  check(
+    'fake constant passes only final-code membership and fails another check',
+    !!fakeFinalResult.checks.find((c) => c.name.includes('final-code membership'))?.ok && fakeFinalResult.checks.some((c) => !c.ok),
+  );
 
   // --- Structural forgeries: a proof must carry exactly what the protocol
   // demands, or the per-query checks could pass vacuously. ---
@@ -187,12 +266,12 @@ async function main() {
     sres.checks.find((c) => !c.ok)?.detail ?? '',
   );
 
-  // Boundary tamper (row 0) must be caught too — B0 = (f-1)/(x-1) stops being a
-  // polynomial, so CP is high degree and FRI rejects.
+  // Boundary tamper (row 0) is another fixed fixture: B0 = (f-1)/(x-1) stops
+  // being a polynomial and this generated proof fails final-code membership.
   const bnd = await prove(16, { tamper: true, tamperRow: 0 });
   const bndRes = await verify(bnd.proof);
   check('boundary tamper (row 0) REJECTED', !bndRes.accepted);
-  check('boundary tamper caught by low-degree test', !bndRes.checks.find((c) => c.name.includes('low-degree'))?.ok);
+  check('boundary tamper fixture fails final-code membership', !bndRes.checks.find((c) => c.name.includes('final-code membership'))?.ok);
 
   console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
   if (failures) process.exit(1);

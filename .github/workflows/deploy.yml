@@ -38,6 +38,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:mutations
       - run: npm run build
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium

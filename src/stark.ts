@@ -1,11 +1,10 @@
 // An honest (if small) STARK, built on the STARK-101 construction.
 //
-// The lesson this module exists to teach: a STARK verifier catches a cheating
-// prover *without ever re-running the computation*. It never sees the full
-// trace. It only checks Merkle openings and a low-degree (FRI) test. If the
-// prover tampers with even one trace cell, the constraint quotient stops being
-// a polynomial, its low-degree extension is no longer low degree, and FRI
-// rejects. Nothing here re-derives Fibonacci to find the cheat.
+// The lesson this module exists to teach: a STARK verifier can reject an
+// inconsistent committed computation without re-running it or seeing the full
+// trace. This module supplies fixed honest and tampered fixtures and exposes
+// every implemented acceptance check. Their observed outcomes do not by
+// themselves establish a universal or end-to-end soundness probability.
 //
 // Construction (single-column Fibonacci AIR):
 //   trace t[i]: t[0]=t[1]=1, t[i+2]=t[i+1]+t[i]
@@ -40,6 +39,11 @@ import {
   sha256Hex,
   type MerkleOpening,
 } from './merkle';
+import {
+  buildFriSoundnessLedger,
+  fieldChallengeBits,
+  type FriSoundnessLedger,
+} from './soundness';
 
 export const BLOWUP = 8; // LDE rate = 1/8
 export const NUM_QUERIES = 8;
@@ -81,7 +85,7 @@ export type StarkProof = {
   compBetas: string[]; // degree-adjustment challenges b0,b1,b2
   friRoots: string[]; // Merkle root of each FRI layer (length numFolds)
   betas: string[]; // FRI folding challenges (length numFolds)
-  finalLayer: string[]; // fully revealed final layer (must be constant)
+  finalLayer: string[]; // fully revealed eight-evaluation final code
   queries: StarkQuery[];
 };
 
@@ -148,7 +152,8 @@ function transitionVanish(x: bigint, n: number, w: bigint): bigint {
 // Each constraint quotient is lifted to a common target degree with a *second*
 // random coefficient (the b_i). Without this, components of different degree
 // could let a cheater hide a high-degree term in a low-degree slot; the random
-// shift makes such cross-degree cancellation fail with overwhelming probability.
+// shift prevents deterministic cross-degree cancellation; a complete analysis
+// must separately account for the field-dependent probability of a bad draw.
 // The lift exponents (x¹ for the boundaries, x^{N-2} for the transition) depend
 // only on the component degrees, so the SAME formula serves both the standard
 // and the zero-knowledge (masked, higher-degree) prover.
@@ -268,7 +273,7 @@ export async function prove(n: number, options: { tamper?: boolean; zk?: boolean
       (compositionDegree >= 0 ? ` Actual deg(CP) = ${compositionDegree} (honest proofs keep this < ${degreeBound}).` : ` Honest deg(CP) stays < ${degreeBound}.`),
   );
 
-  // 5. FRI commit phase: fold CP down to a constant.
+  // 5. FRI commit phase: fold CP down to the degree-<1 final code.
   const friRoots: string[] = [];
   const betas: bigint[] = [];
   const layers: bigint[][] = [cpLde];
@@ -298,7 +303,7 @@ export async function prove(n: number, options: { tamper?: boolean; zk?: boolean
   }
   const finalLayer = layers[layers.length - 1];
   transcript.push(
-    `5. Ran ${numFolds} FRI folds (${L} → ${finalLayer.length} evaluations). Final layer is ${finalLayer.every((x) => x === finalLayer[0]) ? 'constant ✓' : 'NOT constant ✗'} — that constancy is the low-degree test.`,
+    `5. Ran ${numFolds} FRI folds (${L} → ${finalLayer.length} evaluations). Final layer ${finalLayer.every((x) => x === finalLayer[0]) ? 'is in the degree-<1 constant code ✓' : 'is NOT in the degree-<1 constant code ✗'} — one condition of FRI acceptance.`,
   );
 
   // 6. Query phase: sample positions from the full transcript (Fiat-Shamir).
@@ -360,9 +365,9 @@ export async function prove(n: number, options: { tamper?: boolean; zk?: boolean
   };
 }
 
-// The verifier. It receives only the proof — never the trace. Every rejection
-// path below is a property of the commitments and the low-degree test, not a
-// recomputation of Fibonacci.
+// The verifier receives only the proof — never the trace. Every rejection path
+// below is a property of commitments, composition, final-code membership or
+// sampled fold checks, not a recomputation of Fibonacci.
 async function verifyProof(proof: StarkProof): Promise<VerifyResult> {
   const checks: CheckResult[] = [];
   const N = proof.params.traceLength;
@@ -429,15 +434,17 @@ async function verifyProof(proof: StarkProof): Promise<VerifyResult> {
     betas.push(await challenge(`${proof.friRoots.slice(0, r === 0 ? 1 : r + 1).join('|')}|fold|${r}`));
   }
 
-  // Final layer must be a single constant — this IS the low-degree verdict.
+  // The fully revealed final layer must belong to C_k. Here dim(C_k)=1, so all
+  // eight evaluations must agree. This is one acceptance condition; it does
+  // not replace the authenticated sampled fold checks below.
   const constant = finalLayer[0];
   const finalConstant = finalLayer.every((x) => x === constant);
   checks.push({
-    name: 'FRI low-degree test (final layer constant)',
+    name: 'FRI final-code membership (8 evaluations, degree < 1)',
     ok: finalConstant,
     detail: finalConstant
-      ? `Final layer collapsed to the constant ${constant} — CP is low degree.`
-      : 'Final FRI layer is NOT constant — the composition polynomial is high degree, so a constraint was violated.',
+      ? `All eight final evaluations equal ${constant}, so the final layer is in the degree-<1 code; authenticated fold checks are still required.`
+      : 'The eight final evaluations are not all equal, so this generated fixture fails final-code membership.',
   });
 
   // Re-derive query positions and check every opening + fold relation.
@@ -604,8 +611,8 @@ export type QuotientAnalysis = {
 // remainder is nonzero, and the quotient — as a function you must still commit
 // and low-degree-test — interpolates to degree ≈ the domain size. THIS is the
 // exact step where "a constraint is violated" becomes "the polynomial is not
-// low degree", which is what FRI then rejects. Everything is real field
-// arithmetic and real polynomial division; nothing is faked.
+// low degree". The later fixture run records the actual FRI outcome. Everything
+// here is real field arithmetic and real polynomial division; nothing is faked.
 export function quotientAnalysis(n: number, tamperRow = -1): QuotientAnalysis {
   const N = n;
   const w = rootOfUnity(N);
@@ -638,8 +645,9 @@ export function quotientAnalysis(n: number, tamperRow = -1): QuotientAnalysis {
   // The verifier does not get to divide symbolically; it only ever sees the
   // quotient as EVALUATIONS it must low-degree-test. Reconstruct that function
   // by evaluating C(x)/Z_T(x) at N points OFF the transition domain (an offset
-  // coset, where Z_T ≠ 0) and interpolating. Honest ⇒ low degree; tamper ⇒ the
-  // interpolant's degree blows up toward N-1, which is what FRI catches.
+  // coset, where Z_T ≠ 0) and interpolating. Honest ⇒ low degree; for this fixed
+  // tamper, the interpolant's degree blows up toward N-1. The next exhibit then
+  // computes and displays that fixture's actual FRI outcome.
   const off = GENERATOR;
   const cosetPts: bigint[] = [];
   const cosetVals: bigint[] = [];
@@ -676,8 +684,8 @@ export type FriDemoResult = {
   layers: FriLayerInfo[];
   finalConstant: boolean;
   finalValues: string[];
-  proofBytesEstimate: number;
-  lowDegree: boolean; // verdict: did FRI accept?
+  authenticationHashBytesEstimate: number;
+  finalCodewordMember: boolean;
 };
 
 // Shared real FRI commit phase: fold `initialLayer` (evaluations of some
@@ -718,8 +726,15 @@ async function foldLayers(initialLayer: bigint[], off: bigint): Promise<FriDemoR
   }
 
   const finalConstant = layer.every((x) => x === layer[0]);
-  const pathLen = Math.log2(domainSize);
-  const proofBytesEstimate = Math.round(NUM_QUERIES * numFolds * 2 * pathLen * 32);
+  // Authentication hashes only: two openings per sampled path at each
+  // committed layer. Paths shrink with the layers. Values, roots, indices,
+  // Fiat-Shamir material and the revealed final codeword are intentionally not
+  // included, so this must never be presented as a complete proof size.
+  let authenticationHashesPerQuery = 0;
+  for (let r = 0; r < numFolds; r += 1) {
+    authenticationHashesPerQuery += 2 * Math.log2(domainSize >> r);
+  }
+  const authenticationHashBytesEstimate = Math.round(NUM_QUERIES * authenticationHashesPerQuery * 32);
 
   return {
     domainSize,
@@ -727,14 +742,15 @@ async function foldLayers(initialLayer: bigint[], off: bigint): Promise<FriDemoR
     layers,
     finalConstant,
     finalValues: layer.map((x) => x.toString()),
-    proofBytesEstimate,
-    lowDegree: finalConstant,
+    authenticationHashBytesEstimate,
+    finalCodewordMember: finalConstant,
   };
 }
 
 // Exhibit 3: run real even/odd FRI folding on a chosen polynomial. With
-// `tamper`, inject a high-degree term so the final layer fails to collapse —
-// the same mechanism that catches a cheating prover in the full protocol.
+// `tamper`, inject a fixed high-degree term. The generated fixture fails final
+// membership for the transcript-derived challenges; this one run is evidence
+// about the fixture, not a universal soundness experiment.
 export async function friDemo(degree: number, options: { tamper?: boolean } = {}): Promise<FriDemoResult> {
   const tamper = options.tamper ?? false;
   const domainSize = nextPow2(degree + 1) * BLOWUP;
@@ -743,7 +759,7 @@ export async function friDemo(degree: number, options: { tamper?: boolean } = {}
 
   const coeffs = new Array<bigint>(domainSize).fill(0n);
   for (let i = 0; i <= degree; i += 1) coeffs[i] = BigInt(i + 1);
-  if (tamper) coeffs[domainSize / 2] = 7n; // a term FRI cannot fold away
+  if (tamper) coeffs[domainSize / 2] = 7n; // fixed high-degree fixture
 
   const layer: bigint[] = new Array(domainSize);
   for (let j = 0; j < domainSize; j += 1) layer[j] = polyEval(coeffs, mul(off, pow(v, BigInt(j))));
@@ -755,9 +771,10 @@ export async function friDemo(degree: number, options: { tamper?: boolean } = {}
 // the honest-or-tampered Fibonacci trace, form the transition constraint
 // quotient function Q(x) = C(x)/Z_T(x) — the exact artifact the quotient panel
 // just built — evaluate it on the LDE coset, and run the real FRI fold on it.
-// Honest ⇒ Q is low degree ⇒ folds to a constant ⇒ ACCEPT. Tampered ⇒ Z_T does
-// not divide C, Q is NOT low degree ⇒ the final layer is not constant ⇒ REJECT.
-// This is the whole AIR→FRI causal chain acting on one artifact, end to end.
+// The honest fixture reaches the final code. For the generated tampered fixture
+// Z_T does not divide C and the final layer is not constant, so that run is
+// rejected. This demonstrates the AIR→FRI causal chain without claiming that a
+// sampled execution proves a universal soundness probability.
 export async function friFromTrace(n: number, tamperRow = -1): Promise<FriDemoResult & { tampered: boolean }> {
   const N = n;
   const off = GENERATOR;
@@ -798,9 +815,8 @@ export type ProofStats = {
   friOpenings: number; // FRI layer leaves opened across all queries
   proofBytes: number;      // compact binary encoding: 32 bytes per field element / hash
   proofJsonBytes: number;  // what JSON.stringify costs — transport, not proof size
-  querySecurityBits: number; // the FRI query term alone
-  fieldCapBits: number;      // the ceiling log2(p) imposes
-  estimatedSecurityBits: number;
+  soundness: FriSoundnessLedger;
+  fieldChallengeBits: number; // approximate log2(p), not end-to-end security
 };
 
 export type ZkExperiment = {
@@ -950,6 +966,11 @@ export function proofStats(proof: StarkProof): ProofStats {
     traceIdx.add(q.fw2x.index);
     friOpenings += q.layers.length * 2;
   }
+  const soundness = buildFriSoundnessLedger(
+    1 / proof.params.blowup,
+    proof.params.numQueries,
+    proof.params.numFolds,
+  );
   return {
     traceLength: proof.params.traceLength,
     ldeSize: proof.params.ldeSize,
@@ -957,33 +978,9 @@ export function proofStats(proof: StarkProof): ProofStats {
     friOpenings,
     proofBytes: proofSizeBytes(proof),
     proofJsonBytes: JSON.stringify(proof).length,
-    estimatedSecurityBits: securityBits(proof.params.blowup, proof.params.numQueries),
-    querySecurityBits: securityBits(proof.params.blowup, proof.params.numQueries),
-    fieldCapBits: fieldSecurityCapBits(),
+    soundness,
+    fieldChallengeBits: fieldChallengeBits(P),
   };
-}
-
-// Toy soundness estimate. The dominant FRI query term is rate^(-queries), i.e.
-// each query contributes log2(blowup) bits. Real analyses add commit-phase and
-// proximity-gap terms; this is the headline figure used for teaching.
-//
-// It is also optimistic: rate^(-queries) is the CONJECTURED bound, which holds
-// if FRI achieves list decoding up to capacity. Under bounds that are actually
-// proven — the unique decoding radius (1-rate)/2, or the Johnson bound
-// 1-sqrt(rate) — each query is worth well under log2(blowup) bits. At
-// BLOWUP 8 / NUM_QUERIES 8 this returns 24 while the provable figure is roughly
-// 7-12. The UI renders both; do not quote the 24 without the caveat.
-export function securityBits(blowup: number, queries: number): number {
-  return Math.round(queries * Math.log2(blowup));
-}
-
-/**
- * Entropy in one field-element challenge. This is context for the toy field,
- * not a blanket soundness cap: independent challenges can accumulate entropy.
- * A complete analysis must also include field-size-dependent algebraic errors.
- */
-export function fieldSecurityCapBits(modulus: bigint = P): number {
-  return Math.floor(Math.log2(Number(modulus)));
 }
 
 /**

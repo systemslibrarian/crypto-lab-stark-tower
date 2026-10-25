@@ -19,7 +19,7 @@ await esbuild.build({
 });
 
 let ok = true;
-for (const file of ['scripts/selftest_bundle.mjs', 'scripts/domtest.mjs']) {
+for (const file of ['scripts/selftest_bundle.mjs', 'scripts/domtest.mjs', 'tests/claim-language.node.mjs']) {
   console.log(`\n=== ${file} ===`);
   const res = spawnSync(process.execPath, [file], { stdio: 'inherit' });
   if (res.status !== 0) ok = false;

@@ -48,3 +48,8 @@ test('the production build runs this maintenance gate', () => {
   assert.equal(packageJson.scripts['test:maintenance'], 'node --test tests/maintenance-controls.node.mjs');
   assert.match(packageJson.scripts.build, /npm run test:maintenance/);
 });
+
+test('CI runs the focused soundness mutations', () => {
+  assert.equal(packageJson.scripts['test:mutations'], 'node scripts/mutations.mjs');
+  assert.match(job('build'), /- run: npm run test:mutations/);
+});

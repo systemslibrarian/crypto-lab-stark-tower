@@ -8,7 +8,7 @@ import { expect, test, type Page } from '@playwright/test';
  * and checked against a value re-derived here — the Fibonacci trace and its AIR
  * residuals, the quotient identity Q(x)*Z(x) = C(x) at the sampled points, the
  * FRI domain-halving schedule and query payload, the query index chain through
- * every fold, and the soundness/size arithmetic of the calculator. Nothing is
+ * every fold, and the query-model/size arithmetic of the calculator. Nothing is
  * asserted by matching a copied string where a number can be recomputed.
  */
 
@@ -110,7 +110,7 @@ async function runFri(page: Page): Promise<string> {
   await expect(page.locator('#fri-status')).not.toHaveText('Folding…', { timeout: 30_000 });
   await blank(page, 'fri-verdict');
   await page.locator('#fri-run').click();
-  await expect(page.locator('#fri-verdict')).toContainText(/LOW DEGREE/, { timeout: 30_000 });
+  await expect(page.locator('#fri-verdict')).toContainText(/FINAL-CODE MEMBERSHIP/, { timeout: 30_000 });
   await expect(page.locator('#fri-status')).not.toHaveText('Folding…');
   return page.locator('#fri-verdict').innerText();
 }
@@ -222,7 +222,7 @@ test('quotient: the honest trace divides cleanly and Q has the degree the flow c
     expect(bound).toBe(size - 2);
     expect(degQ).toBeLessThanOrEqual(bound);
     expect(flow).toContain('LOW DEGREE');
-    expect(flow).toContain('FRI will accept');
+    expect(flow).toContain('The FRI fixture is run below');
     await expect(page.locator('#q-status')).toHaveClass(/status-ok/);
     expect(detail).toContain('remainder is the ZERO polynomial');
   }
@@ -264,7 +264,7 @@ test('quotient: tampering makes the division dirty and the degree explode', asyn
   expect(numAfter(flow, 'Q jumps to')).toBe(degQ);
   expect(numAfter(status, 'explodes to')).toBe(degQ);
   expect(flow).toContain('HIGH DEGREE');
-  expect(flow).toContain('FRI will reject');
+  expect(flow).toContain('FRI fixture is run below');
   await expect(page.locator('#q-status')).toHaveClass(/status-bad/);
   await expect(page.locator('#q-why')).toContainText('nonzero remainder');
 
@@ -276,7 +276,7 @@ test('quotient: tampering makes the division dirty and the degree explode', asyn
 
 // ════════════ Exhibit 3 — FRI ════════════
 
-test('FRI: the honest quotient folds to a constant on the schedule the table prints', async ({ page }) => {
+test('FRI: the honest fixture reaches the eight-value final code on the printed schedule', async ({ page }) => {
   for (const n of ['8', '16']) {
     await setSelect(page, 'fri-n', n);
     await page.locator('#fri-trace-tamper').uncheck();
@@ -293,21 +293,25 @@ test('FRI: the honest quotient folds to a constant on the schedule the table pri
     expect(table[table.length - 1].size, 'folding stops at the blowup-sized final layer').toBe(8);
     expect(table.map((r) => r.round)).toEqual(table.map((_, i) => i));
 
-    expect(verdict).toContain('✓ LOW DEGREE');
-    const constant = BigInt(numAfter(verdict, 'single constant'));
+    expect(verdict).toContain('✓ FINAL-CODE MEMBERSHIP');
+    expect(verdict).toContain('all 8 final evaluations equal');
+    const constant = BigInt(numAfter(verdict, 'equal'));
     expect(constant).toBeLessThan(P);
     expect(table[table.length - 1].degree, 'a constant final layer has degree 0').toBe(0);
     await expect(page.locator('#fri-verdict')).toHaveClass(/verdict-ok/);
     await expect(page.locator('#fri-status')).toContainText('honest trace');
 
-    // The query payload is queries * folds * 2 openings * path length * 32 B.
+    // The displayed byte count is only authentication hashes. Each layer's
+    // path shrinks by one; values, roots and final codeword are excluded.
     const sizeLine = await page.locator('#fri-size').innerText();
-    const folds = numAfter(sizeLine, 'bytes (');
+    const folds = numAfter(sizeLine, 'uncompressed');
     expect(folds).toBe(table.length - 1);
     expect(numAfter(sizeLine, 'folds, ')).toBe(domain);
     expect(numAfter(sizeLine.split('→')[1], '')).toBe(domain >> folds);
     const queries = 8;
-    expect(nums(sizeLine)[0]).toBe(queries * folds * 2 * Math.log2(domain) * 32);
+    const pathHashesPerQuery = table.slice(0, -1).reduce((sum, row) => sum + 2 * Math.log2(row.size), 0);
+    expect(nums(sizeLine)[0]).toBe(queries * pathHashesPerQuery * 32);
+    expect(sizeLine).toContain('Values, roots, indices and the final codeword are excluded');
 
     // The diagram draws one dot per evaluation point in every layer.
     const dots = await page.locator('#fri-viz svg circle').count();
@@ -315,13 +319,13 @@ test('FRI: the honest quotient folds to a constant on the schedule the table pri
   }
 });
 
-test('FRI: the tampered trace does not collapse, and the diagram marks it', async ({ page }) => {
+test('FRI: the fixed tampered trace fails final-code membership, and the diagram marks it', async ({ page }) => {
   await setSelect(page, 'fri-n', '16');
   await page.locator('#fri-trace-tamper').check();
   const verdict = await runFri(page);
 
-  expect(verdict).toContain('✗ NOT LOW DEGREE');
-  expect(verdict).toContain('FRI rejects');
+  expect(verdict).toContain('✗ FINAL-CODE MEMBERSHIP FAILED');
+  expect(verdict).toContain('generated fixture is rejected');
   await expect(page.locator('#fri-verdict')).toHaveClass(/verdict-bad/);
   await expect(page.locator('#fri-status')).toContainText('TAMPERED trace');
   await expect(page.locator('#fri-status')).toContainText('Exhibit 02');
@@ -329,13 +333,13 @@ test('FRI: the tampered trace does not collapse, and the diagram marks it', asyn
   const table = await readFriTable(page);
   const last = table[table.length - 1];
   expect(last.degree, 'the final layer is NOT a constant').toBeGreaterThan(0);
-  // Every layer stays high degree: the cheat cannot be folded away.
+  // Every layer of this generated fixture stays non-constant.
   for (const row of table) expect(row.degree).toBeGreaterThan(0);
   expect(await page.locator('#fri-viz svg .viz-dot-bad').count()).toBe(last.size);
 
   // Unchecking restores acceptance on the same control.
   await page.locator('#fri-trace-tamper').uncheck();
-  expect(await runFri(page)).toContain('✓ LOW DEGREE');
+  expect(await runFri(page)).toContain('✓ FINAL-CODE MEMBERSHIP');
 });
 
 test('FRI: the abstract-polynomial source accepts low degree and rejects an injected term', async ({ page }) => {
@@ -347,7 +351,7 @@ test('FRI: the abstract-polynomial source accepts low degree and rejects an inje
   for (const degree of ['4', '8', '16']) {
     await setSelect(page, 'fri-degree', degree);
     const verdict = await runFri(page);
-    expect(verdict, `degree ${degree} is low degree`).toContain('✓ LOW DEGREE');
+    expect(verdict, `degree ${degree} fixture reaches the final code`).toContain('✓ FINAL-CODE MEMBERSHIP');
     const table = await readFriTable(page);
     expect(table[0].degree, 'the committed layer has the chosen degree').toBe(Number(degree));
     expect(table[table.length - 1].degree).toBe(0);
@@ -355,14 +359,14 @@ test('FRI: the abstract-polynomial source accepts low degree and rejects an inje
 
   await page.locator('#fri-tamper').check();
   const bad = await runFri(page);
-  expect(bad).toContain('✗ NOT LOW DEGREE');
-  await expect(page.locator('#fri-status')).toContainText('high-degree abstract polynomial');
+  expect(bad).toContain('✗ FINAL-CODE MEMBERSHIP FAILED');
+  await expect(page.locator('#fri-status')).toContainText('deliberately high-degree fixture');
   expect((await readFriTable(page))[0].degree).toBeGreaterThan(16);
 
   // …and back to the threaded-trace source.
   await page.locator('#fri-src-trace').check();
   await expect(page.locator('#fri-trace-controls')).toBeVisible();
-  expect(await runFri(page)).toContain('LOW DEGREE');
+  expect(await runFri(page)).toContain('FINAL-CODE MEMBERSHIP');
 });
 
 test('FRI: a superseded fold cannot repaint evidence for older controls', async ({ page }) => {
@@ -380,7 +384,7 @@ test('FRI: a superseded fold cannot repaint evidence for older controls', async 
   expect((await readFriTable(page))[0].size, 'the older n=16 fold never paints over n=8').toBe(8 * 8);
 });
 
-// ════════════ Exhibit 4 — proof size and the security calculator ════════════
+// ════════════ Exhibit 4 — proof size and the query-model calculator ════════════
 
 test('proof size: the benchmark table matches the chart and the size ordering the README claims', async ({ page }) => {
   const rows = await page.locator('#size-table tbody tr').evaluateAll((trs) =>
@@ -422,7 +426,7 @@ test('proof size: this demo measures its own proof, and JSON transport is bigger
   expect(text).toContain('neither establishes production security');
 });
 
-test('security calculator: bits, cheat odds and payload bytes are consistent at every setting', async ({ page }) => {
+test('query-model calculator: arithmetic, classifications and authentication bytes stay consistent', async ({ page }) => {
   for (const [rateLog, queries] of [[3, 8], [1, 40], [6, 80], [4, 17]]) {
     await setRange(page, 'sec-blowup', rateLog);
     await setRange(page, 'sec-queries', queries);
@@ -434,37 +438,58 @@ test('security calculator: bits, cheat odds and payload bytes are consistent at 
     const bits = Number(await page.locator('#sec-bits').innerText());
     expect(bits, 'queries x log2(blowup)').toBe(queries * rateLog);
 
-    // A liar slips through with probability rate^queries = blowup^-queries.
+    // Exact capacity-model arithmetic only: rate^queries = blowup^-queries.
     const odds = await page.locator('#sec-cheat').innerText();
     expect(oneInLog10(odds)).toBeCloseTo(queries * Math.log10(blowup), 1);
 
-    // Reference payload: 1024-row trace -> 10 folds, path length 10 + rateLog.
+    // Reference authentication hashes: 1024-row bound -> 10 folds and a path
+    // that shrinks by one hash per layer.
     const kb = Number((await page.locator('#sec-bytes').innerText()).replace(/[^0-9.]/g, ''));
-    expect(kb).toBe(Number(((queries * 10 * 2 * (10 + rateLog) * 32) / 1024).toFixed(1)));
+    const initialLog = 10 + rateLog;
+    let pathHashesPerQuery = 0;
+    for (let r = 0; r < 10; r += 1) pathHashesPerQuery += 2 * (initialLog - r);
+    expect(kb).toBe(Number(((queries * pathHashesPerQuery * 32) / 1024).toFixed(1)));
 
-    // The prose restates the same decomposition.
+    // The prose and ledger retain the boundaries at every slider setting.
     const note = await page.locator('#sec-note').innerText();
-    expect(note).toContain(`${queries} queries × ${rateLog} bit`);
-    expect(note).toContain(`blowup ${blowup}`);
+    expect(note).toContain(`${queries} × log₂(${blowup})`);
     expect(nums(note)[0]).toBe(bits);
-    expect(note).toContain('not an end-to-end security estimate');
-    expect(note).toContain('conjectured bound');
+    expect(note).toContain('heuristic query term, not FRI or STARK soundness');
+    expect(note).toContain('strict limit');
+    expect(note).toContain('NOT ESTABLISHED');
+    const rows = await page.locator('#sec-ledger-body tr').evaluateAll((trs) =>
+      trs.map((r) => Array.from(r.querySelectorAll('td')).map((td) => td.textContent ?? '')),
+    );
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toEqual(['Capacity model', `${bits} bits`, 'heuristic query arithmetic']);
+    expect(rows[1][2]).toContain('requires δ ≥ θ =');
+    expect(rows[2][2]).toContain('θ approaches it from below');
+    expect(rows[3][1]).toBe('NOT ESTABLISHED');
+    expect(rows[4][1]).toBe('NOT ESTABLISHED');
   }
 });
 
-test('security calculator: the toy parameters give the 24 bits the README quotes', async ({ page }) => {
+test('query-model calculator: toy parameters keep 24 heuristic and all stronger claims unestablished', async ({ page }) => {
   await setRange(page, 'sec-blowup', 3); // blowup 8
   await setRange(page, 'sec-queries', 8);
   await expect(page.locator('#sec-bits')).toHaveText('24');
   expect(oneInLog10(await page.locator('#sec-cheat').innerText())).toBeCloseTo(Math.log10(8 ** 8), 1);
 
-  // The fixed worked example quotes the same 8-query, blowup-8 odds.
+  // The fixed worked example gives exact arithmetic and denies the protocol claim.
   const example = await page.locator('#sec-example').innerText();
-  expect(example).toContain('blowup 8 and 8 queries');
+  expect(example).toContain('rate 1/8 with 8 independent uniform queries');
   expect(oneInLog10(example)).toBeCloseTo(Math.log10(8 ** 8), 1);
-  expect(example).toContain('1-in-8 chance');
-  // …and the note keeps the provable-bound caveat attached to that number.
-  expect(await page.locator('#sec-note').innerText()).toContain('7–12 bits rather than 24');
+  expect(example).toContain('2^-24');
+  expect(example).toContain('not a protocol success probability');
+
+  const rows = await page.locator('#sec-ledger-body tr').evaluateAll((trs) =>
+    trs.map((r) => Array.from(r.querySelectorAll('td')).map((td) => td.textContent ?? '')),
+  );
+  expect(rows[0][1]).toBe('24 bits');
+  expect(Number.parseFloat(rows[1][1])).toBeCloseTo(6.64, 2);
+  expect(rows[2][1]).toBe('< 12 bits');
+  expect(rows[3][2]).toContain('actual δ and all 10 fold MCA terms are absent');
+  expect(rows[4][2]).toContain('Fiat-Shamir/BCS');
 });
 
 // ════════════ Exhibit 5 — prove and verify ════════════
@@ -519,17 +544,20 @@ test('prove: the succinctness counters are internally consistent', async ({ page
   expect(s.pct, 'the percentage is the opened fraction').toBe(Math.round((s.unique / s.lde) * 100));
   expect(s.fri, 'two openings per fold per query').toBe(8 * Math.log2(s.traceLen) * 2);
 
-  // Tiles: proof bytes, committed values seen, soundness bits.
+  // Tiles: proof bytes, committed values seen, capacity-model query arithmetic.
   const [proofBytes, seen, bits] = s.tiles;
   expect(seen, 'committed values seen = trace openings + FRI openings').toBe(s.unique + s.fri);
-  expect(bits, 'queries x log2(blowup) = 8 x 3').toBe(24);
+  expect(bits, 'capacity model: queries x log2(blowup) = 8 x 3').toBe(24);
   expect(proofBytes, 'the tile repeats the byte count from the status line').toBe(numAfter(status, 'The proof is'));
 
   const hint = await page.locator('#e2e-succinct').innerText();
   const jsonBytes = numAfter(hint, 'hex paths — is');
   expect(jsonBytes).toBeGreaterThan(proofBytes);
   expect(Number(/is\s+[\d,]+\s+bytes, about ([\d.]+)/.exec(hint)![1])).toBeCloseTo(jsonBytes / proofBytes, 1);
-  expect(hint).toContain('production targets ~100');
+  expect(hint).toContain('capacity-model query heuristic, not a soundness bound');
+  expect(hint).toContain('unique-radius query-only reference is 6.64 bits');
+  expect(hint).toContain('Johnson-radius strict limiting query-only value is <12.00 bits');
+  expect((hint.match(/NOT ESTABLISHED/g) ?? [])).toHaveLength(2);
 });
 
 test('prove: the query inspector index chain is the one the protocol dictates', async ({ page }) => {
@@ -567,7 +595,7 @@ test('prove: the query inspector index chain is the one the protocol dictates', 
     expect(f.b, `round ${f.round} sibling`).toBe((carry % half) + half);
     carry = carry % half;
   }
-  expect(text).toContain('The verifier checks these hashes and the low-degree test. Nothing else.');
+  expect(text).toContain('commitments, composition consistency, final-code membership and every sampled fold relation');
 });
 
 test('verify: an honest proof passes every check and is ACCEPTED', async ({ page }) => {
@@ -577,34 +605,34 @@ test('verify: an honest proof passes every check and is ACCEPTED', async ({ page
   expect(rows.length).toBeGreaterThanOrEqual(6);
   expect(rows.filter((r) => !r.ok), 'no check may fail on an honest proof').toEqual([]);
   expect(verdict).toContain('✓ ACCEPTED');
-  expect(verdict).toContain('only checked hashes and a low-degree test');
+  expect(verdict).toContain('commitment, composition, final-code and sampled-fold check');
   expect(status).toContain('ACCEPTED');
   await expect(page.locator('#e2e-checks .verdict')).toHaveClass(/verdict-ok/);
   await expect(page.locator('#e2e-checks .check-fail')).toHaveCount(0);
 });
 
-test('verify: a corrupted trace is REJECTED by the low-degree test alone, with no recomputation', async ({ page }) => {
+test('verify: the fixed corrupted fixture fails final-code membership, with no recomputation', async ({ page }) => {
   const proveStatus = await proveE2E(page, 'corrupt');
   expect(proveStatus).toContain('TAMPERED');
   expect(numAfter(proveStatus, 'row')).toBe(8); // n/2 for the default n = 16
-  expect(proveStatus).toContain('only the low-degree test can catch it');
+  expect(proveStatus).toContain('final-code membership check fails');
+  expect(proveStatus).toContain('authenticated openings remain intact');
 
   const { status, rows, verdict } = await verifyE2E(page);
   expect(verdict).toContain('✗ REJECTED');
   await expect(page.locator('#e2e-checks .verdict')).toHaveClass(/verdict-bad/);
 
-  // The README's central claim: the cheat surfaces as a failed low-degree test,
-  // NOT as a failed commitment or a re-run of the computation.
+  // Record the exact observed failure, not a universal rejection claim.
   const failed = rows.filter((r) => !r.ok).map((r) => r.name);
-  expect(failed).toEqual(['FRI low-degree test (final layer constant)']);
+  expect(failed).toEqual(['FRI final-code membership (8 evaluations, degree < 1)']);
   const merkle = rows.find((r) => r.name.includes('Merkle openings'))!;
   expect(merkle.ok, 'the commitments still open correctly — nothing was forged').toBe(true);
   expect(rows.find((r) => r.name.includes('Proof shape'))!.ok).toBe(true);
 
   const detail = await page.locator('#e2e-checks .check-fail .check-detail').innerText();
-  expect(detail).toContain('NOT constant');
-  expect(detail).toContain('a constraint was violated');
-  expect(status).toContain('never re-ran Fibonacci');
+  expect(detail).toContain('eight final evaluations are not all equal');
+  expect(detail).toContain('generated fixture fails final-code membership');
+  expect(status).toContain('without the verifier re-running Fibonacci');
   expect(status).toContain('REJECTED');
 
   // Re-proving honestly on the same panel goes back to ACCEPTED.

@@ -41,7 +41,7 @@ export const NARROW = { width: 380, height: 800 };
  *     could no-op with the run still green. It then waited a fixed `300ms` and
  *     scanned once, at 1280px, with no assertion that anything had happened.
  *     Whole halves of this lab had never been measured: the abstract-polynomial
- *     branch of FRI, both ends of the two soundness sliders, the trace length of
+ *     branch of FRI, both ends of the two query-model sliders, the trace length of
  *     8, zero-knowledge mode, the verifier's REJECTED report, and the entire
  *     380px column. This drive names every control, asserts every completion
  *     signal, and scans after every step in {dark, light} × {1280, 380}.
@@ -246,7 +246,7 @@ export async function expectNoOrphanedLists(page: Page): Promise<void> {
  * single-configuration gate sees depends entirely on them. Every exhibit here
  * renders ITSELF on load — `init()` calls `render()`/`run()` at the end of each
  * `bind*`, so the AIR trace, the quotient division, a full FRI fold, the size
- * table, the soundness calculator, one masked opening and the whole 600-trial
+ * table, the query-model ledger, one masked opening and the whole 600-trial
  * masking histogram are all already on screen at first paint, all in their
  * HONEST configuration. Only the end-to-end proof is absent. The old gate
  * clicked through fourteen selectors and then scanned; it never recorded which
@@ -757,7 +757,7 @@ export async function scan(page: Page, label: string): Promise<void> {
  *    a whole sub-panel, two controls and a distinct FRI result that the old
  *    gate clicked past. `#e2e-zk` is the only route to the masked proof.
  *
- *  - BOTH ENDS OF EVERY RANGE. The two soundness sliders are driven to their
+ *  - BOTH ENDS OF EVERY RANGE. The two query-model sliders are driven to their
  *    minimum and maximum, because the numbers they print change length by an
  *    order of magnitude (`1 in 2` versus `1 in 1.5 × 10^72`) and because the
  *    minimum is the only state where the calculator's prose reads "1 bit".
@@ -826,7 +826,7 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   // ── Exhibit 03: FRI, both sources and both outcomes ─────────────────────
   await page.check('#fri-trace-tamper');
   await expect(page.locator('#fri-verdict')).toHaveClass(/verdict-bad/);
-  await expect(page.locator('#fri-verdict')).toContainText('NOT LOW DEGREE');
+  await expect(page.locator('#fri-verdict')).toContainText('FINAL-CODE MEMBERSHIP FAILED');
   await expect(page.locator('#fri-viz .viz-dot-bad').first()).toBeVisible();
   await scanAt('FRI folding the tampered quotient, final layer not constant');
 
@@ -862,21 +862,21 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await page.click('#fri-run');
   await expect(page.locator('#fri-verdict')).toHaveClass(/verdict-ok/);
 
-  // ── Exhibit 04: both ends of both soundness sliders ─────────────────────
+  // ── Exhibit 04: both ends of both query-model sliders ───────────────────
   await page.locator('#sec-blowup').fill('1');
   await page.locator('#sec-queries').fill('1');
   await expect(page.locator('#sec-blowup-val')).toHaveText('2');
   await expect(page.locator('#sec-queries-val')).toHaveText('1');
   await expect(page.locator('#sec-bits')).toHaveText('1');
   await expect(page.locator('#sec-cheat')).toContainText('1 in');
-  await scanAt('soundness calculator at its weakest, 1 bit');
+  await scanAt('query-model calculator at its weakest, 1 heuristic bit');
 
   await page.locator('#sec-blowup').fill('6');
   await page.locator('#sec-queries').fill('80');
   await expect(page.locator('#sec-blowup-val')).toHaveText('64');
   await expect(page.locator('#sec-queries-val')).toHaveText('80');
   await expect(page.locator('#sec-bits')).toHaveText('480');
-  await scanAt('soundness calculator at its strongest, 480 bits');
+  await scanAt('query-model calculator at its strongest, 480 heuristic bits');
 
   await page.locator('#sec-blowup').fill('3');
   await page.locator('#sec-queries').fill('32');
