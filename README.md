@@ -37,8 +37,10 @@ The demo presents an orientation comparing STARKs and SNARKs; an interactive AIR
 
 - **StarkNet and StarkEx** — StarkWare's L2s use STARK proofs to scale Ethereum with validity proofs.
 - **Risc Zero** — a general-purpose zkVM proving RISC-V execution with STARKs.
-- **Polygon Miden** — a STARK-based zk-rollup and virtual machine.
+- **Miden** (formerly Polygon Miden; spun out of Polygon Labs' Agglayer Breakout Program in April 2025) — a STARK-based zk-rollup and virtual machine.
 - **Transparent, post-quantum proof systems** — STARKs are chosen where a trusted setup is unacceptable and long-term quantum resistance matters.
+
+**Sources reviewed 15 November 2026:** the project now presents itself as Miden ([miden.xyz](https://miden.xyz/)). Polygon Labs, which had announced it as Polygon Miden ([Polygon blog](https://polygon.technology/blog/polygon-announces-polygon-miden-a-stark-based-ethereum-compatible-rollup)), said on 29 April 2025 that "Miden has been successfully incubated from the Agglayer Breakout Program, spinning off into a $25 million seed round" ([Polygon blog](https://polygon.technology/blog/miden-raises-25m-from-a16z-crypto-1kx-and-hackvc-to-build-the-edge-blockchain)).
 
 ## How to Run Locally
 
@@ -69,7 +71,7 @@ Arithmetic is over `p = 3·2^30 + 1 = 3221225473`, the field from StarkWare's ST
 3. **FRI** — real even/odd coset folding (`f(x), f(−x) → f′(x²)`) with SHA-256 Merkle roots per layer, plus an **SVG visualization** of the domain halving. The final code has degree below one and eight evaluations; agreement of all eight is one acceptance condition. The fixed honest and tampered fixtures show their actual outcomes without generalizing one run into a probability claim.
 4. **Proof size and query models** — benchmark table, the demo's own toy proof size measured live, and an interactive ledger. It classifies capacity arithmetic as heuristic, unique-radius and Johnson values as conditional query-only references, and leaves incomplete FRI/end-to-end bounds not established. Its separate byte estimate counts only FRI authentication hashes along the actual shrinking paths.
 5. **Prove & verify** — the implemented toy protocol end to end. Generate a proof, inspect a query's decommitment and all verifier checks, then **Corrupt trace** and observe this generated fixture fail final-code membership without trace recomputation. Includes a **zero-knowledge mode** toggle and masking experiments. A disclosure panel states what a production STARK still adds.
-6. **In production** — StarkNet, StarkEx, Risc Zero, Polygon Miden.
+6. **In production** — StarkNet, StarkEx, Risc Zero, Miden (formerly Polygon Miden).
 
 ## Architecture
 
