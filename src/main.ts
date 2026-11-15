@@ -450,13 +450,13 @@ function bindSecurityCalc(): void {
         `<tr><td>Capacity model</td><td>${fmtBits(bits)} bits</td><td>heuristic query arithmetic</td></tr>` +
         `<tr><td>Unique-radius reference</td><td>${fmtBits(ledger.uniqueRadiusQueryOnly.bits)} bits</td><td>query only; requires δ ≥ θ = ${(ledger.uniqueRadiusQueryOnly.radius).toFixed(4)}</td></tr>` +
         `<tr><td>Johnson-radius reference</td><td>&lt; ${fmtBits(ledger.johnsonLimitQueryOnly.bits)} bits</td><td>query only; δ ≥ ${(ledger.johnsonLimitQueryOnly.radius).toFixed(4)}, θ approaches it from below</td></tr>` +
-        `<tr><td>CL146 FRI IOP bound</td><td>NOT ESTABLISHED</td><td>actual δ and all ${folds} fold MCA terms are absent</td></tr>` +
+        `<tr><td>FRI IOP bound (ePrint 2025/1993)</td><td>NOT ESTABLISHED</td><td>actual δ and all ${folds} fold MCA terms are absent</td></tr>` +
         `<tr><td>End-to-end STARK bound</td><td>NOT ESTABLISHED</td><td>also needs algebraic/composition, Merkle/hash and Fiat-Shamir/BCS terms</td></tr>`;
     }
     setText(
       'sec-note',
       `${fmtBits(bits)} is exactly −log₂(rate^queries) for the capacity sampling model (${queries} × log₂(${blowup})); it is a heuristic query term, not FRI or STARK soundness. ` +
-        `The unique-radius row assumes δ ≥ θ = (1−rate)/2. The Johnson row assumes δ reaches that radius while θ approaches it from below; its value is a strict limit because CL146 Lemma 2.4 gives the cited MCA estimate only for θ < 1−√rate. ` +
+        `The unique-radius row assumes δ ≥ θ = (1−rate)/2. The Johnson row assumes δ reaches that radius while θ approaches it from below; its value is a strict limit because Lemma 2.4 of Garreta, Mohnblatt and Wagner (ePrint 2025/1993) gives the cited MCA estimate only for θ < 1−√rate. ` +
         `The field range is log₂(p) ≈ ${capBits.toFixed(2)} bits, but the actual hash-to-field distribution and algebraic errors must be accounted for. Missing terms remain NOT ESTABLISHED instead of being treated as zero.`,
     );
     const bitsEl = $('sec-bits');
@@ -502,7 +502,7 @@ function bindExhibit5(): void {
       `it measures the transport encoding, not the proof.</p>` +
       `<p class="hint">The 24-bit tile is exact arithmetic for the <em>capacity-model query heuristic</em>, not a soundness bound. ` +
       `At this rate and query count, the unique-radius query-only reference is ${s.soundness.uniqueRadiusQueryOnly.bits.toFixed(2)} bits and the Johnson-radius strict limiting query-only value is &lt;${s.soundness.johnsonLimitQueryOnly.bits.toFixed(2)} bits. ` +
-      `The CL146 FRI IOP bound is <strong>NOT ESTABLISHED</strong>: this run does not establish δ or every fold MCA term. ` +
+      `The FRI IOP bound (ePrint 2025/1993) is <strong>NOT ESTABLISHED</strong>: this run does not establish δ or every fold MCA term. ` +
       `End-to-end STARK security is also <strong>NOT ESTABLISHED</strong> without algebraic/composition, Merkle/hash and Fiat-Shamir/BCS terms. ` +
       `The field range is log&#8322;(p) &asymp; ${s.fieldChallengeBits.toFixed(2)} bits; that is context, not a security cap.</p>`;
   }

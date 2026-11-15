@@ -24,11 +24,11 @@ const mutations = [
     owningFailure: 'capacity arithmetic is visibly classified as heuristic',
   },
   {
-    name: 'CL146 query term replaced by capacity arithmetic',
+    name: 'ePrint 2025/1993 query term replaced by capacity arithmetic',
     file: 'src/soundness.ts',
     before: 'Math.pow(1 - Math.min(evidence.theta!, evidence.distance!), queries)',
     after: 'Math.pow(rate, queries)',
-    owningFailure: 'FAIL  soundness: CL146 conditional query formula uses min(theta, delta)',
+    owningFailure: 'FAIL  soundness: ePrint 2025/1993 conditional query formula uses min(theta, delta)',
   },
   {
     name: 'missing fold error silently accepted',

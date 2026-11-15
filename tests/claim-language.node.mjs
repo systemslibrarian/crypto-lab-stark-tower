@@ -34,7 +34,7 @@ test('missing theorem and protocol terms remain visibly unestablished', () => {
   const html = sources.get('index.html');
   assert.match(html, /NOT ESTABLISHED/);
   const main = sources.get('src/main.ts');
-  assert.match(main, /CL146 FRI IOP bound/);
+  assert.match(main, /FRI IOP bound \(ePrint 2025\/1993\)/);
   assert.match(main, /End-to-end STARK bound/);
   assert.match(main, /actual δ and all \$\{folds\} fold MCA terms are absent/);
   assert.match(main, /algebraic\/composition, Merkle\/hash and Fiat-Shamir\/BCS terms/);

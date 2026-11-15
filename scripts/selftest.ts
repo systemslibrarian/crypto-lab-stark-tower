@@ -73,7 +73,7 @@ async function main() {
       fiatShamirBcsError: 0.05,
     });
     const expectedQuery = Math.pow(1 - Math.min(0.4, 0.5), 8);
-    check('soundness: CL146 conditional query formula uses min(theta, delta)', close(complete.theoremQuery.error!, expectedQuery));
+    check('soundness: ePrint 2025/1993 conditional query formula uses min(theta, delta)', close(complete.theoremQuery.error!, expectedQuery));
     check('soundness: complete FRI terms use their capped union bound', close(complete.friIop.error!, expectedQuery + 0.01 + 0.02));
     check('soundness: complete surrounding terms produce an explicit aggregate', close(complete.endToEnd.error!, expectedQuery + 0.01 + 0.02 + 0.03 + 0.04 + 0.05));
     check('soundness: union bounds cap at one', cappedUnionBound([0.7, 0.6]) === 1);
@@ -82,7 +82,7 @@ async function main() {
 
     throws('soundness: rate zero rejected', () => buildFriSoundnessLedger(0, 8, 4));
     throws('soundness: rate one rejected', () => buildFriSoundnessLedger(1, 8, 4));
-    throws('soundness: a rate above the CL146 Construction 4.4 domain is rejected', () => buildFriSoundnessLedger(0.75, 8, 4));
+    throws('soundness: a rate above the ePrint 2025/1993 Construction 4.4 domain is rejected', () => buildFriSoundnessLedger(0.75, 8, 4));
     throws('soundness: fractional query count rejected', () => buildFriSoundnessLedger(1 / 8, 1.5, 4));
     throws('soundness: negative fold count rejected', () => buildFriSoundnessLedger(1 / 8, 8, -1));
     throws('soundness: distance above one rejected', () => buildFriSoundnessLedger(1 / 8, 8, 4, { distance: 1.1 }));

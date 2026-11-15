@@ -2,11 +2,15 @@
  * FRI soundness accounting for the teaching UI.
  *
  * Sources and scope:
- * - CL146, ePrint 2025/1993 v4 (2026-08-25), Theorem 5.2: the query-round
+ * - Albert Garreta, Nicolas Mohnblatt and Benedikt Wagner, "A Simplified
+ *   Round-by-round Soundness Proof of FRI" (2025), ePrint 2025/1993 v4
+ *   (2026-08-25), Theorem 5.2: the query-round
  *   term is (1 - min(theta, delta))^t and the fold-round MCA errors remain.
- * - CL146, Lemma 2.4: the cited Reed-Solomon MCA estimate is useful only for
+ * - ePrint 2025/1993, Lemma 2.4: the cited Reed-Solomon MCA estimate is useful only for
  *   theta strictly below the Johnson radius 1 - sqrt(rate).
- * - CL042, ePrint 2026/1367, Sections 2.1-2.5, 4.1-4.3 and 5.4-5.5:
+ * - Christos Skatharoudis, "SoK: Hash-Based Polynomial Commitments and
+ *   Low-Degree Tests: From FRI to Basefold, STIR, and WHIR" (2026),
+ *   ePrint 2026/1367, Sections 2.1-2.5, 4.1-4.3 and 5.4-5.5:
  *   rate^queries is the capacity-model query heuristic, not a complete bound.
  *
  * This module deliberately distinguishes arithmetic that can be computed from
@@ -32,7 +36,7 @@ export interface QueryReference {
 export interface FriSoundnessEvidence {
   /** Actual relative distance delta of the committed initial word from C_0. */
   distance?: number;
-  /** CL146 tradeoff parameter theta. */
+  /** ePrint 2025/1993 tradeoff parameter theta. */
   theta?: number;
   /** One justified MCA error for every fold, in round order. */
   foldMcaErrors?: readonly number[];
@@ -115,7 +119,7 @@ export function buildFriSoundnessLedger(
 ): FriSoundnessLedger {
   requireFinite('rate', rate);
   if (rate <= 0 || rate > 0.5) {
-    throw new RangeError('rate must be in (0, 1/2] for CL146 Construction 4.4');
+    throw new RangeError('rate must be in (0, 1/2] for ePrint 2025/1993 Construction 4.4');
   }
   if (!Number.isInteger(queries) || queries <= 0) throw new RangeError('queries must be a positive integer');
   if (!Number.isInteger(folds) || folds < 0) throw new RangeError('folds must be a non-negative integer');
