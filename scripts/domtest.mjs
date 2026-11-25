@@ -145,7 +145,7 @@ check('ZK one-opening secret marked unchanged', text('zk-one-viz').includes('unc
 // Exhibit 5·ZK step 2: masking experiment histogram + stats.
 check('ZK histogram rendered', await waitFor('zk-viz', '') || document.querySelectorAll('#zk-viz .zk-bar').length > 0);
 check('ZK histogram has bars', document.querySelectorAll('#zk-viz .zk-bar-real').length > 0);
-check('ZK note reports no leak', await waitFor('zk-note', 'never leaked'));
+check('ZK note reports the observed count', await waitFor('zk-note', 'masked openings matched f(x) exactly'));
 
 // Zero-knowledge mode: masked proof still verifies, and re-running changes the root.
 document.getElementById('e2e-zk').checked = true;

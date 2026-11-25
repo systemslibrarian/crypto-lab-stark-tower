@@ -695,7 +695,7 @@ test('prove: changed inputs retire completed and in-flight proof evidence', asyn
 
 // ════════════ Exhibit 5b — the "zk" in zk-STARK ════════════
 
-test('zk: a masked opening changes on every reveal while the secret stays fixed', async ({ page }) => {
+test('zk: the one-opening exhibit counts the distinct draws on screen', async ({ page }) => {
   const secretOf = () => page.locator('#zk-one-viz .zk-one-secret .zk-one-num').innerText();
   const latestOf = () => page.locator('#zk-one-viz .zk-one-latest .zk-one-num').innerText();
 
@@ -708,17 +708,17 @@ test('zk: a masked opening changes on every reveal while the secret stays fixed'
     expect(await secretOf(), 'the witness never moves').toBe(secret);
     seen.add(await latestOf());
   }
-  expect(seen.size, 'every reveal shows a fresh masked value').toBe(6);
+  expect(seen.size, 'independent draws should produce more than one value in this sample').toBeGreaterThan(1);
   await expect(page.locator('#zk-one-viz')).toContainText('unchanged');
 
   const note = await page.locator('#zk-one-note').innerText();
   expect(numAfter(note, '')).toBe(6);
-  expect(note).toContain('the secret f(x) never moved');
+  expect(note).toContain(`Distinct masked values among the last 6 shown: ${seen.size}.`);
   // The history is capped, so the panel cannot grow without bound.
   expect(await page.locator('#zk-one-viz .zk-one-row').count()).toBeLessThanOrEqual(6);
 });
 
-test('zk: masked openings match the witness-free simulator and never leak the true value', async ({ page }) => {
+test('zk: the masking experiment reports its observed matches and histogram gap', async ({ page }) => {
   await blank(page, 'zk-note');
   await page.locator('#zk-run').click();
   await expect(page.locator('#zk-note')).toContainText('fresh-randomness runs', { timeout: 30_000 });
@@ -735,13 +735,14 @@ test('zk: masked openings match the witness-free simulator and never leak the tr
   expect(d / trials, 'a fresh mask each time means near-total distinctness').toBeGreaterThan(0.99);
   expect(numAfter(note, 'Across')).toBe(trials);
 
-  expect(Number(leaks.num), 'the true value must not appear among masked openings').toBe(0);
-  await expect(page.locator('#zk-stats .sec-num').nth(1)).toHaveClass(/status-ok/);
-  expect(note).toContain('never leaked in this run');
+  const matches = Number(leaks.num);
+  expect(matches).toBeGreaterThanOrEqual(0);
+  expect(matches).toBeLessThanOrEqual(trials - d + 1);
+  expect(leaks.cap).toBe('exact matches with f(x)');
+  expect(note).toContain(`${matches} masked openings matched f(x) exactly`);
 
-  // The gap the tile reports is the gap the prose reports.
-  const tileGap = Number(gap.num.replace('%', ''));
-  expect(tileGap).toBe(Number(/max gap ([\d.]+)%/.exec(note)![1]));
+  const tileGap = Number(gap.num);
+  expect(note).toContain(`was ${tileGap.toFixed(1)} percentage points`);
   expect(tileGap, 'the masked distribution tracks the simulator').toBeLessThan(15);
   expect(Math.abs(Number(corr.num)), 'no correlation between opened points').toBeLessThan(0.2);
 
@@ -750,4 +751,26 @@ test('zk: masked openings match the witness-free simulator and never leak the tr
   expect(buckets).toBe(16);
   expect(await page.locator('#zk-viz .zk-bar-real').count()).toBe(buckets);
   expect(await page.locator('#zk-viz .zk-bar-sim').count()).toBe(buckets);
+});
+
+test('zk: repeated zero masks produce exact matches and undefined correlation', async ({ page }) => {
+  // Alternate an out-of-range draw with zero. Rejection sampling must keep only zero.
+  await page.evaluate(() => {
+    const original = crypto.getRandomValues.bind(crypto);
+    let outOfRange = true;
+    Object.defineProperty(crypto, 'getRandomValues', { configurable: true, value(array: Uint32Array) {
+      if (!(array instanceof Uint32Array)) return original(array);
+      array.fill(outOfRange ? 0xffffffff : 0);
+      outOfRange = !outOfRange;
+      return array;
+    } });
+  });
+  await page.locator('#zk-one').click();
+  await page.locator('#zk-one').click();
+  const shown = await page.locator('#zk-one-viz .zk-one-row .zk-one-num').allTextContents();
+  expect(shown[0]).toBe(shown[1]);
+  await expect(page.locator('#zk-one-note')).toContainText(`shown: ${new Set(shown).size}.`);
+  await page.locator('#zk-run').click();
+  await expect(page.locator('#zk-note')).toContainText('600 masked openings matched f(x) exactly');
+  await expect(page.locator('#zk-stats .sec-num')).toHaveText(['1/600', '600', '100.0', 'undefined']);
 });

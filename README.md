@@ -24,6 +24,8 @@ What makes this demo different from a hand-wave: **the verifier rejects the supp
 
 The demo presents an orientation comparing STARKs and SNARKs; an interactive AIR exhibit with a single-column Fibonacci trace where tampering a row makes a residual nonzero; a **quotient exhibit** that divides `C(x)` by `Z(x)` on that same trace; a FRI exhibit with even/odd coset folding and per-layer SHA-256 Merkle roots; a proof-size benchmark with a query-model/error ledger; a full prove-and-verify exhibit with independently visible checks; a zero-knowledge masking mode; and a production survey. Generate an honest proof, inspect all eight final evaluations, verify it, then build the fixed tampered fixture and observe its actual rejection without a trace recomputation.
 
+Any length-n trace can be interpolated by a polynomial of degree below n. The Fibonacci transition and boundary constraints distinguish valid traces. In the masking exhibit, an exact match with the unmasked value is a possible draw (probability 1/p at the displayed off-domain point). Its counter and the histogram describe this sample.
+
 ## What Can Go Wrong
 
 - **Large proofs** — STARK proofs run ~45–200 KB versus 128 bytes for Groth16, a real cost wherever bandwidth or storage is tight.

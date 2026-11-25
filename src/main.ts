@@ -652,9 +652,7 @@ function bindZkOneOpening(): void {
     }
     setText(
       'zk-one-note',
-      clicks < 2
-        ? 'Click again — the secret f(x) stays fixed, but watch the received value change.'
-        : `${clicks} openings so far: the secret f(x) never moved, yet the verifier saw a different masked value every time.`,
+      `${clicks} openings so far. The secret f(x) stays fixed. Distinct masked values among the last ${history.length} shown: ${new Set(history).size}.`,
     );
   }
 
@@ -674,18 +672,15 @@ function bindZk(): void {
     if (stats) {
       stats.innerHTML =
         `<div class="sec-stat"><span class="sec-num">${exp.distinctOpenings}/${exp.trials}</span><span class="sec-cap">distinct openings</span></div>` +
-        `<div class="sec-stat"><span class="sec-num ${exp.leakedCount === 0 ? 'status-ok' : 'status-bad'}">${exp.leakedCount}</span><span class="sec-cap">true-value leaks</span></div>` +
-        `<div class="sec-stat"><span class="sec-num">${(exp.maxBucketGap * 100).toFixed(1)}%</span><span class="sec-cap">max gap vs simulator</span></div>` +
-        `<div class="sec-stat"><span class="sec-num">${exp.pairwiseCorrelation.toFixed(3)}</span><span class="sec-cap">cross-point correlation</span></div>`;
+        `<div class="sec-stat"><span class="sec-num">${exp.leakedCount}</span><span class="sec-cap">exact matches with f(x)</span></div>` +
+        `<div class="sec-stat"><span class="sec-num">${(exp.maxBucketGap * 100).toFixed(1)}</span><span class="sec-cap">max bucket gap (percentage points)</span></div>` +
+        `<div class="sec-stat"><span class="sec-num">${exp.pairwiseCorrelation?.toFixed(3) ?? 'undefined'}</span><span class="sec-cap">cross-point correlation</span></div>`;
     }
     setText(
       'zk-note',
-      `Across ${exp.trials} fresh-randomness runs, masked openings spread ~uniformly and match the witness-free simulator (max gap ${(exp.maxBucketGap * 100).toFixed(1)}%). ` +
-        (exp.leakedCount === 0
-          ? 'The true value never leaked in this run — that is the count in the tile above, and it is zero.'
-          : `The true value leaked ${exp.leakedCount} time${exp.leakedCount === 1 ? '' : 's'} in ${exp.trials} runs: a masked opening happened to land exactly on f(x). ` +
-            'At a rate near 1 in p that is expected coincidence rather than a broken mask — but it is what the counter says, so it is what this line says.') +
-        ' The opened points reveal nothing about the witness.',
+      `Across ${exp.trials} fresh-randomness runs, ${exp.leakedCount} masked openings matched f(x) exactly. ` +
+        `The largest observed bucket gap between the masked and simulated samples was ${(exp.maxBucketGap * 100).toFixed(1)} percentage points. ` +
+        'With independent uniform masks each draw has a 1/p chance of matching f(x). The histogram alone cannot establish zero knowledge.',
     );
   }
   $('zk-run')?.addEventListener('click', () => void run());

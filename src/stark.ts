@@ -181,9 +181,10 @@ function compositionValue(
 // never for Fiat-Shamir). The randomness MUST be independent of the witness;
 // that independence is what gives zero-knowledge.
 function randomField(): bigint {
-  const buf = new Uint32Array(2);
-  crypto.getRandomValues(buf);
-  return ((BigInt(buf[0]) << 32n) | BigInt(buf[1])) % P;
+  // P fits in 32 bits. Discard the tail so all P residues have equal weight.
+  const word = new Uint32Array(1);
+  do { crypto.getRandomValues(word); } while (word[0] >= Number(P));
+  return BigInt(word[0]);
 }
 
 export async function prove(n: number, options: { tamper?: boolean; zk?: boolean; tamperRow?: number } = {}): Promise<ProveResult> {
@@ -827,17 +828,17 @@ export type ZkExperiment = {
   realHistogram: number[]; // distribution of masked openings f′(x) over fresh randomness
   simHistogram: number[]; // distribution of a simulator that knows no witness (uniform)
   distinctOpenings: number; // how many of the masked openings were unique
-  leakedCount: number; // times a masked opening equalled the true value (want ~0)
+  leakedCount: number; // count of exact matches, including chance coincidences
   maxBucketGap: number; // max |real−sim| as a fraction of trials (small ⇒ indistinguishable)
-  pairwiseCorrelation: number; // |corr| between two distinct positions' openings (want ~0)
+  pairwiseCorrelation: number | null; // undefined for a constant sample, otherwise |corr| between two distinct positions' openings (want ~0)
 };
 
 // Empirically demonstrate the zero-knowledge masking. At a fixed coset point we
 // draw many masked openings f′(x) = f(x) + (xᴺ−1)·r(x) with FRESH randomness and
 // compare their distribution to a witness-free simulator that just outputs
 // uniform field elements. Because r(x) is uniform, the masked opening is uniform
-// and independent of the true f(x): the two histograms match and the true value
-// never leaks. This is the core of the masking ZK argument made measurable.
+// and independent of the true f(x). A single opening can equal f(x) by chance,
+// with probability 1/P. Histograms show finite samples from the two distributions.
 //
 // Honesty note: this checks the (necessary) condition that revealed values are
 // distributed independently of the witness. It is strong evidence, not a formal
@@ -909,7 +910,7 @@ export function zkOpeningExperiment(n: number, position: number, trials: number,
     va += (aVals[i] - ma) ** 2;
     vb += (bVals[i] - mb) ** 2;
   }
-  const pairwiseCorrelation = va > 0 && vb > 0 ? Math.abs(cov / Math.sqrt(va * vb)) : 0;
+  const pairwiseCorrelation = va > 0 && vb > 0 ? Math.abs(cov / Math.sqrt(va * vb)) : null;
 
   return {
     position,

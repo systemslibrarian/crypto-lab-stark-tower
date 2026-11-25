@@ -204,7 +204,7 @@
         <div class="trust-banner trust-conceptual"><strong>Real field, toy size:</strong> arithmetic is over the STARK-101 prime <code>p = 3·2³⁰ + 1 = 3221225473</code>, a genuine 2-adic field. Traces are short (8 or 16 rows) so they fit on screen; that is the only "toy" part of this exhibit.</div>
         <div class="prose">
           <p>AIR expresses a computation as a <em>trace</em> (a table of field elements) plus <em>constraints</em> that every honest trace must satisfy. We use single-column Fibonacci: <code>t[0] = t[1] = 1</code> and <code>t[i+2] = t[i+1] + t[i]</code>.</p>
-          <p>The prover interpolates the trace into a polynomial <code>f</code> of degree below the trace length. "The trace is valid" becomes "<code>f</code> is genuinely low degree" — the claim FRI will later test.</p>
+          <p>Any trace of <code>n</code> field values, including one with a wrong Fibonacci row, interpolates to a polynomial <code>f</code> of degree below <code>n</code>. The transition constraints test the recurrence. The next exhibit shows how a failed constraint changes the quotient that enters the low-degree test.</p>
         </div>
         <div class="demo-grid">
           <div class="panel">
@@ -459,7 +459,7 @@
           <div class="panel">
             <div class="ph">Step 1 — watch one masked opening change</div>
             <div class="pb">
-              <p class="hint">The verifier opens the trace polynomial at a fixed point. Click repeatedly: the <em>secret</em> value <code>f(x)</code> never changes, but the value the verifier actually receives is different every single time — fresh randomness blinds it.</p>
+              <p class="hint">The verifier opens the trace polynomial at a fixed point. Click repeatedly: the <em>secret</em> value <code>f(x)</code> never changes, but fresh randomness selects a masked value. A draw can repeat or coincide with the secret.</p>
               <div class="controls"><button class="bp" id="zk-one">Reveal one masked opening</button></div>
               <div id="zk-one-viz" class="zk-one-viz"></div>
               <p id="zk-one-note" class="hint" role="status" aria-live="polite"></p>
@@ -468,7 +468,7 @@
           <div class="panel">
             <div class="ph">Step 2 — the accumulated distribution vs. a witness-free simulator</div>
             <div class="pb">
-              <p class="hint">Now draw many masked openings of that same point and pile them into a histogram. Overlay a simulator that knows <em>no secret at all</em> and just emits uniform noise. If masking works, the two shapes are indistinguishable.</p>
+              <p class="hint">Now draw many masked openings of that same point and pile them into a histogram. Overlay a simulator that knows <em>no secret at all</em> and just emits uniform noise. Compare the proportions in each bucket. Their observed gap varies from run to run.</p>
               <div class="controls"><button class="bp" id="zk-run">Run masking experiment</button></div>
               <div id="zk-viz"></div>
               <div id="zk-stats" class="sec-grid"></div>
@@ -477,7 +477,7 @@
             </div>
           </div>
           <div class="callout">
-            <strong>Honesty note:</strong> this measures the necessary condition — revealed values distributed independently of the witness. It is strong evidence, not a formal zero-knowledge proof, which additionally argues a simulator can reproduce <em>entire</em> transcripts. Try the <em>Zero-knowledge mode</em> checkbox above: the proof still verifies, but its trace commitment changes on every run.
+            <strong>Honesty note:</strong> the histogram compares samples at one fixed point. A zero-knowledge proof must also account for <em>entire</em> transcripts. Try the <em>Zero-knowledge mode</em> checkbox above: the proof still verifies, and fresh masks normally produce different trace commitments.
           </div>
         </section>
 
@@ -486,7 +486,7 @@
           <div class="disclosure-body">
             <p><strong>Already implemented here:</strong> per-constraint <em>degree adjustment</em> (<code>αᵢ + βᵢ·x^(D−dᵢ)</code>, so a cheater cannot hide a high-degree term in a low-degree slot) and optional <em>zero-knowledge masking</em> of the trace polynomial (demonstrated just above).</p>
             <p><strong>Real security accounting.</strong> Production systems commonly target around 100 bits, but a larger blowup and more queries do not by themselves prove that target. A complete analysis accounts for proximity and every fold error, AIR/composition terms, commitment assumptions and the non-interactive transform. Production implementations also use longer traces (2¹⁰–2²⁴ rows) and NTTs instead of the O(n²) Lagrange interpolation used here.</p>
-            <p><strong>A full zero-knowledge proof.</strong> We verify the masking empirically (openings independent of the witness). A production claim also exhibits a simulator that reproduces entire transcripts — commitments, paths, and FRI layers — without the witness, and masks the composition and FRI layers too.</p>
+            <p><strong>A full zero-knowledge proof.</strong> We sample two opening distributions for comparison. A production claim also exhibits a simulator that reproduces entire transcripts — commitments, paths, and FRI layers — without the witness, and masks the composition and FRI layers too.</p>
             <p><strong>DEEP / out-of-domain sampling.</strong> Stronger soundness samples the composition at a random point outside the evaluation domain, tightening the proximity gap. The core idea — commit, then prove low degree — is identical.</p>
           </div>
         </details>
